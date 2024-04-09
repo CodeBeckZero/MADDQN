@@ -6,6 +6,8 @@ import numpy as np
 from collections import deque, namedtuple
 import random
 from baseagent import baseagent
+import os
+import sys
 
     
 class DQN(baseagent, nn.Module):
@@ -370,6 +372,8 @@ class DDQN(baseagent, nn.Module):
                         "STD Reward": std_reward,
                         'Loss': loss}
             episodic_data.append(epi_data)
+            
+            
             print(
                 (f'\r{self.get_name()} - {self.env.get_name()}[{start_idx}:{end_idx}] ' +
                 f'- Testing Finished - EPIDSODE - {episode_num} of {testing_epsidoes}' +
@@ -379,13 +383,41 @@ class DDQN(baseagent, nn.Module):
         
         self.testing_episodic_data = episodic_data
         print(f'\n{self.get_name()}: Testing Complete on {self.env.get_name()}[{start_idx}:{end_idx}]')              
+    
+    @torch.no_grad()
+    def _validate(self, val_start_idx:int, val_end_idx:int):
+        
+        ## Disables Dropout Layers in Q-networks
+        self.Q1_nn.eval()
+        self.Q2_nn.eval()
+        
+        self.env.update_idx(val_start_idx,val_end_idx)
+        
+        tot_reward, mean_reward, std_reward, loss = self._play_episode(0, None , None , 'testing')
+        ror = self.env.step_info[-1]['Portfolio Value'] / self.env.initial_cash
+        cost = self.env.step_info[-1]['Total Commission Cost']
+        
+
+        ## Reenable Dropout Layers in Q-networks
+        self.Q1_nn.train()
+        self.Q2_nn.train()
+        
+        return tot_reward, mean_reward, std_reward, loss, ror, cost
+        
             
     def train(self, start_idx:int, 
               end_idx:int, 
               training_epsidoes,
               epsilon_decya_func, 
               initial_epsilon, 
-              final_epsilon, 
+              final_epsilon,
+              val_start_idx:int,
+              val_end_idx:int,
+              save_path = str,
+              early_stop = False, 
+              stop_metric = 'val_ror',
+              stop_patience = 7,
+              stop_delta = 0.01,
               update_q_freq = None,
               update_tgt_freq = None):
         
@@ -401,11 +433,21 @@ class DDQN(baseagent, nn.Module):
         self.Q1_nn.train()
         self.Q2_nn.train()
 
-        print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
+        print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}] -> Validation on {self.env.get_name()}[{val_start_idx}:{val_end_idx}]')
+        
+        model_save_path = save_path + "/" + self.name
+        if not os.path.exists(model_save_path):
+            os.makedirs(model_save_path)
         
         episodic_data = []
 
         self.env.update_idx(start_idx,end_idx)
+        
+        if early_stop:
+                        
+            early_stopping = EarlyStopping( patience = stop_patience, verbose=True, delta=stop_delta)
+            loss_type, target =  self._setup_early_stop(stop_metric)
+
         
                 
         for episode_num in range(1, training_epsidoes+1):
@@ -417,20 +459,69 @@ class DDQN(baseagent, nn.Module):
                                             training_epsidoes)
             
             tot_reward, mean_reward, std_reward, loss = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
-            epi_data = {"Training Episode": episode_num, 
-                        "Total Reward": tot_reward,
-                        "Mean Reward": mean_reward,
-                        "STD Reward": std_reward,
-                        'Q1 Loss': loss[0],
-                        'Q2 Loss': loss[1],                        
-                        "Epsilon": epsilon}
+            # Rewards based on Validation Set
+            val_tot_reward, val_avg_reward, val_std_reward, _, ror, cost = self._validate(val_start_idx,val_end_idx)
+            # Reset Enviornment to Training Indices
+            self.env.update_idx(start_idx,end_idx) 
+            
+            epi_data = {"trn_ep": episode_num, 
+                        "tot_r": tot_reward,
+                        "avg_r": mean_reward,
+                        "std_r": std_reward,
+                        'Q1_loss': loss[0],
+                        'Q2_loss': loss[1],                        
+                        "epsilon": epsilon,
+                        'val_tot_r': val_tot_reward,
+                        'val_avg_r': val_avg_reward,
+                        'val_std_r': val_std_reward,
+                        'val_ror': ror,
+                        'val_comm_cost': cost}
             episodic_data.append(epi_data)
-            print(
-                (f'\r{self.get_name()}: EPIDSODE {episode_num} of {training_epsidoes} Finished ' +
-                f'-> Q1 Loss = {loss[0]:.2f}, Q2 Loss = {loss[1]:.2f}, Total Reward = {tot_reward:.2f}' +
-                f' Mean Reward = {mean_reward:.2f}, STD Reward = {std_reward:.2f}'), end="", flush=True)
-        
-        
+            
+            if early_stop:
+                current_val = episodic_data[-1][stop_metric]
+                
+                if loss_type == "Loss":
+                    val_loss = current_val
+                    stop_msg = early_stopping(val_loss, self.Q1_nn, model_save_path)
+                
+                else:
+                    val_loss = (current_val - target)**2
+                    stop_msg = early_stopping(val_loss, self.Q1_nn, model_save_path)
+                    
+                    if loss_type == "Max" and current_val > target:
+                        target = current_val
+                        stop_msg = early_stopping.new_target(target)
+                    
+                    elif loss_type == "Min" and current_val < target:
+                        target = current_val
+                        stop_msg = early_stopping.new_target(target)
+
+                # Print a line with blank spaces to clear the existing content
+                sys.stdout.write('\r' + ' ' * 200)  # Assuming 200 characters wide terminal
+
+                # Print Update
+                print(
+                    f'\r{self.get_name()}: EP {episode_num} of {training_epsidoes} Finished ' +
+                    f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
+                    f'σR = {std_reward:.2f} | {loss_type}: {stop_metric} = {current_val:.2f}' + stop_msg, end="", flush=False)
+            
+            
+                if early_stopping.early_stop:
+                    self.Q1_nn.load_state_dict(torch.load(model_save_path + '/checkpoint.pth'))
+                    print(f'\n{self.get_name()}: Early Stoppage on EPIDSODE {episode_num} -> Best QNet Loaded')
+                    break
+            else:
+
+                # Print a line with blank spaces to clear the existing content
+                sys.stdout.write('\r' + ' ' * 200)  # Assuming 150 characters wide terminal
+
+                # Print Update
+                print(
+                    f'\r{self.get_name()}: EP {episode_num} of {training_epsidoes} Finished ' +
+                    f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, ' +
+                    f'μR = {mean_reward:.2f} σR = {std_reward:.2f}', end="", flush=False)
+             
         self.training_episodic_data = episodic_data
         print(f'\n{self.get_name()}: Training finished on {self.env.get_name()}[{start_idx}:{end_idx}]')      
     
@@ -570,12 +661,29 @@ class DDQN(baseagent, nn.Module):
             
     
     def export_Q_nn(self,filenamepath):
-        torch.save(self.Q_nn,filenamepath)
+        torch.save(self.Q1_nn,filenamepath)
         print(f'{self.get_name()}: Q-Network Exported to file "{filenamepath}"')
     
     def import_Q_nn(self,filenamepath):
-        self.Q_nn = torch.load(filenamepath)
-        print(f'{self.get_name()}: Q-Network Imported from file "{filenamepath}"\n{self.Q_nn}')
+        self.Q1_nn = torch.load(filenamepath)
+        print(f'{self.get_name()}: Q-Network Imported from file "{filenamepath}"\n{self.Q1_nn}')
+    
+    def _setup_early_stop(self, stop_metric):
+        
+        # Early Stoppage of Training due to flat validation
+        dic =  {'Max':[-np.inf,['val_tot_r', 'val_avg_r', 'val_ror', 'tot_r','avg_r']], 
+                'Min':[np.inf,['val_std_r','val_comm_cost','std_r']],
+                'Loss': [None, ['Q1_loss', 'Q2_loss']]} 
+
+        for key in dic.keys():
+            if stop_metric in dic[key][1]:
+                loss_type = key
+                init_tgt_val = dic[key][0]
+                return loss_type, init_tgt_val
+        
+        
+        
+        
 
 Experience = namedtuple('Experience', field_names=['state',
                                                    'action',
@@ -650,7 +758,7 @@ class Q_Network(nn.Module):
         # Apply Glorot Normal initialization to the linear layers' weights
         for i in range(0, len(layers), 3):
             if isinstance(layers[i], nn.Linear):
-                nn.init.xavier_normal_(layers[i].weight)
+                nn.init.kaiming_normal_(layers[i].weight)
                 
         ## Create Q Network
         self.Q_nn = nn.Sequential(*layers)
@@ -664,3 +772,61 @@ class Q_Network(nn.Module):
         return self.Q_nn(x)
         
 
+class EarlyStopping:
+    # From https://github.com/thuml/Time-Series-Library/blob/main/tutorial/TimesNet_tutorial.ipynb
+    def __init__(self, patience=7, verbose=False, delta=0):
+        self.patience = patience # how many times will you tolerate for loss not being on decrease
+        self.verbose = verbose  # whether to print tip info
+        self.counter = 0 # now how many times loss not on decrease
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.delta = delta
+
+    def __call__(self, val_loss, model, path) -> str:
+        score = -val_loss
+        if self.best_score is None:
+            self.best_score = score
+            msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            self.save_checkpoint(val_loss, model, path)
+
+        # meaning: current score is not 'delta' better than best_score, representing that 
+        # further training may not bring remarkable improvement in loss. 
+        elif score < self.best_score + self.delta:  
+            self.counter += 1
+            msg = (f' -> EarlyStopping counter: {self.counter} out of {self.patience}')
+            # 'No Improvement' times become higher than patience --> Stop Further Training
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+        else: #model's loss is still on decrease, save the now best model and go on training
+            self.best_score = score
+            msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            self.save_checkpoint(val_loss, model, path)
+            
+            self.counter = 0
+        
+        return msg
+    
+    def new_target(self,target):
+        # val_loss input to __call__ is based on a new target, requiring reset of counter
+        # best_score, and early stoppage flag
+        
+        self.counter = 0 
+        self.best_score = None
+        self.early_stop = False
+        msg = (f' -> New Target Established {target:.2f} - Reset Early Stopping')
+        
+        return msg
+        
+
+    def save_checkpoint(self, val_loss, model, path):
+    ### used for saving the current best model
+         
+        torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+        self.val_loss_min = val_loss
+    
+    def load_checkpoint(self, model, path):
+    ### Used for loading the saved model from the checkpoint file
+        model.load_state_dict(torch.load(path))
+        print('Last Checkpoint loaded')

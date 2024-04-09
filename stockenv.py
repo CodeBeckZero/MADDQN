@@ -122,7 +122,7 @@ class ContinuousOHLCVEnv(gym.Env):
             'Stock Holdings': self.stock_holding,
             'Stock Price': self.stock_price,
             "Last Commission Cost": self.last_commission_cost,
-            'Total Commision Cost': self.total_commission_cost,
+            'Total Commission Cost': self.total_commission_cost,
             'State': self.current_state,
             "Available Actions": self.available_actions,
             "Env Action": action
