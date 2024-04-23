@@ -1,5 +1,5 @@
 # CSV - Input and Wrangling
-
+import torch
 import numpy as np
 import pandas as pd
 
@@ -203,4 +203,210 @@ def generate_column_names(col_name, length):
             temp_name = f"{col_name}_{chr(97)}{chr(93+idx)}"
             col_name_list.append(temp_name)        
     
-    return col_name_list          
+    return col_name_list 
+
+def gen_OHLCV_envs(filename_dic, path, env_keys, norm_idx_range = None):
+    """
+    Generate OHLCV (Open, High, Low, Close, Volume) environments based on data stored in CSV files.
+
+    Parameters:
+    - filename_dic: Dictionary containing environment names as keys and corresponding file names as values.
+    - path: Path to the directory containing the CSV files.
+    - env_keys: List of environment names to generate environments for.
+    - norm_idx_range: Optional normalization index range as a tuple (start_index, end_index).
+
+    Returns:
+    - environments: Dictionary containing generated environments with environment names as keys and DataFrames as values.
+    
+    Raises:
+        ValueError: If normalization range isn't a list with 2 int elements, in ascending order.
+    """
+
+    # Check if normalization index range is provided and valid
+    if norm_idx_range is None:
+        normalize = False
+    elif len(norm_idx_range) == 2 and all(isinstance(x, int) for x in norm_idx_range) and norm_idx_range[0] < norm_idx_range[1]:
+        normalize = True
+    else:
+        raise ValueError(f'norm_idx_range: Invalid parameter -> {norm_idx_range}')
+
+    # Initialize dictionary to store generated environments
+    environments = {}
+
+    # Iterate through each environment name and corresponding file
+    for name, file in filename_dic.items():
+        # Check if the environment name is in the list of keys
+        if name in env_keys:
+            print(name)
+            # Read the CSV file using YAHOO_csv_input function
+            temp_df = YAHOO_csv_input(file, path)
+            # Apply normalization if enabled
+            if normalize:
+                temp_norm_df = normalize_df_ohlcv_by_row_range(temp_df, norm_idx_range[0], norm_idx_range[1])
+                temp_norm_df['date'] = temp_df['date']
+                environments[name] = temp_norm_df
+            else:
+                # Add the DataFrame to the environments dictionary
+                environments[name] = temp_df
+
+    # Return the dictionary of generated environments
+    return environments
+        
+def create_avg_dataset_update_env_dic(avg_dataset_name, 
+                                      df_keys_to_avg,
+                                      cols_names_to_avg,
+                                      envs_dic):
+    """
+    Create an average dataset from multiple DataFrames and update the environments dictionary.
+
+    Parameters:
+    - avg_dataset_name: Name for the average dataset.
+    - df_keys_to_avg: List of keys corresponding to DataFrames in the environments dictionary to be averaged.
+    - cols_names_to_avg: List of column names to average across DataFrames.
+    - envs_dic: Dictionary containing environment names as keys and DataFrames as values.
+
+    Returns:
+    - None
+    """
+
+    # Initialize list to store DataFrames to be averaged
+    dfs_to_blend = []
+
+    # Iterate through each key corresponding to DataFrames to be averaged
+    for key in df_keys_to_avg:
+        # Add DataFrame to list
+        dfs_to_blend.append(envs_dic[key])
+
+    # Create average dataset from the list of DataFrames
+    envs_dic[avg_dataset_name] = avg_datasets(dfs_to_blend, cols_names_to_avg)
+    
+    # Optional: Use 'pass' if function does not contain any additional logic
+    pass
+
+def gen_long_form_timesnet_from_ohlcv(df_date_ohlcv):
+    """
+    Generate long-form timeseries dataset suitable for TimesNet model from OHLCV DataFrame.
+
+    Parameters:
+    - df_date_ohlcv: DataFrame containing OHLCV data with 'date' column and columns for each value (e.g., open, high, low, close, volume).
+
+    Returns:
+    - combined_df: Long-form DataFrame with columns 'ds', 'unique_id', and 'y', suitable for TimesNet model.
+    """
+
+    # Extract names of value columns (excluding 'date')
+    value_names = [col for col in df_date_ohlcv.columns if col != 'date']
+
+    # Initialize dictionary to store DataFrames by value
+    df_by_value = {}
+
+    # Iterate through each value column
+    for value in value_names:
+        # Select 'date' and value column, copy DataFrame
+        new_df = df_date_ohlcv[['date', value]].copy()
+
+        # Rename columns to match TimesNet input format
+        new_df = new_df.rename(columns={'date': 'ds', value: 'y'})
+
+        # Add 'unique_id' column
+        new_df.insert(1, 'unique_id', value)
+
+        # Store DataFrame in dictionary with value as key
+        df_by_value[value] = new_df
+
+    # Combine DataFrames from dictionary into a single DataFrame
+    combined_df = pd.concat(df_by_value.values(), axis=0, ignore_index=True)
+    
+    # Return combined DataFrame
+    return combined_df
+
+def OHLC_to_Candle_img(OHLC_window_narray: np.array) -> np.array:
+    """
+    Convert OHLC (Open-High-Low-Close) window data to a candlestick image.
+
+    Parameters:
+    OHLC_window_narray (np.array): OHLC window data in the shape [window_size, 4], where columns represent [open, high, low, close].
+
+    Returns:
+    np.array: Candlestick image represented as a 2D array with shape (window_size * 3) x (window_size * 3).
+    """
+    # Initialize a blank candlestick image
+    window_size = OHLC_window_narray.shape[0]
+    image_size = int(window_size * 3)
+    ctl_stk_img = np.full((image_size, image_size), 255).astype(int)
+    
+    # Normalize OHLC array
+    min_val = OHLC_window_narray.min()
+    max_val = OHLC_window_narray.max()
+    OHLC_window_norm = (OHLC_window_narray - min_val) / (max_val - min_val)
+    
+    # Find y-pixel location of data
+    idy_img = np.round(OHLC_window_norm * image_size).astype(int)
+
+    # Loop through each sample in window and generate graphic
+    for img_idx, data_idx in zip(range(1, image_size, 3), range(len(idy_img))):
+        
+        # Sample data labels
+        open_price = OHLC_window_narray[data_idx, 0]
+        high_price = OHLC_window_narray[data_idx, 1]
+        low_price = OHLC_window_narray[data_idx, 2]
+        close_price = OHLC_window_narray[data_idx, 3]
+        
+        # Sample data label's y-pixel location
+        open_img_loc = idy_img[data_idx, 0]
+        high_img_loc = idy_img[data_idx, 1]
+        low_img_loc = idy_img[data_idx, 2]
+        close_img_loc = idy_img[data_idx, 3]
+        
+        # Determine Color of candlestick
+        if open_price > close_price: # Losing day: Open > Close -> black
+            color = 0
+        elif open_price <= close_price: # Winning day: Open =< Close -> grey
+            color = 128
+        
+        # Min/Max price reference for candle (fat) part of graph
+        max_price = max(open_price, close_price)
+        min_price = min(open_price, close_price)
+        
+        # Min/Max y-pixel location reference for candle (fat) part of graph
+        max_loc = max(open_img_loc, close_img_loc)
+        min_loc = min(open_img_loc, close_img_loc)
+        
+        # Generate Candle (fat) part of the graph
+        ctl_stk_img[min_loc:max_loc+1, img_idx-1:img_idx+2] = color
+        
+        # Generate small part of the graph
+        if high_price != max_price:  # Generates top narrow part of graphic
+            ctl_stk_img[max_loc:high_img_loc+1, img_idx] = color
+        
+        if low_price < min_price: # Generates bottom narrow part of graphic
+            ctl_stk_img[low_img_loc:min_loc+1, img_idx] = color
+
+    return ctl_stk_img
+
+def batch_data_to_tensor(input_data: np.array, window_size: int) -> torch.Tensor:
+    """
+    Converts a NumPy array into a PyTorch tensor with specified batch size and padding.
+
+    Parameters:
+    input_data (np.array): An array with samples as rows and features as columns.
+    window_size (int): Number of samples in each batch.
+
+    Returns:
+    torch.Tensor: Tensor with the shape of [Batch, Sample #, Feature #].
+    """
+    # Convert input data to a tensor and perform a deep copy
+    tensor_copy = torch.tensor(input_data).clone()
+
+    # Calculate the number of elements needed to pad
+    total_elements = tensor_copy.size(0)
+    additional_elements = window_size - (total_elements % window_size)
+
+    # Pad the tensor with zeros to make it evenly divisible
+    n_features = tensor_copy.size(1)
+    padded_tensor = torch.cat((tensor_copy, torch.zeros(additional_elements, n_features)), dim=0)
+
+    # Reshape the padded tensor
+    batch_tensor = padded_tensor.view(-1, window_size, n_features)
+
+    return batch_tensor
