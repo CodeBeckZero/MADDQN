@@ -1,4 +1,4 @@
-import torch
+import torch # For something
 import torch.nn as nn
 import torch.optim as optim
 import copy
@@ -7,7 +7,8 @@ from collections import deque, namedtuple
 import random
 from agents.baseagent import BaseAgent
 import os
-import sys                  
+import sys
+import pandas as pd                  
 
 
 
@@ -80,9 +81,7 @@ class DDQN(BaseAgent, nn.Module):
        
     
     @torch.no_grad()  
-    def test(self, start_idx:int, 
-              end_idx:int, 
-              testing_epsidoes=1):
+    def test(self, start_idx:int, end_idx:int, testing_episodes=1):
         
         ## Disables Dropout Layers in Q-networks
         self.Q1_nn.eval()
@@ -94,7 +93,7 @@ class DDQN(BaseAgent, nn.Module):
         self.env.update_idx(start_idx,end_idx)
         
                 
-        for episode_num in range(1, testing_epsidoes+1):
+        for episode_num in range(1, testing_episodes+1):
 
             
             
@@ -109,7 +108,7 @@ class DDQN(BaseAgent, nn.Module):
             
             print(
                 (f'\r{self.get_name()} - {self.env.get_name()}[{start_idx}:{end_idx}] ' +
-                f'- Testing Finished - EPIDSODE - {episode_num} of {testing_epsidoes}' +
+                f'- Testing Finished - EPIDSODE - {episode_num} of {testing_episodes}' +
                 f'-> Total Reward = {tot_reward:.2f}, Mean Reward = {mean_reward:.2f}' +
                 f'STD Reward = {std_reward:.2f}'), end="", flush=True)
         
@@ -140,7 +139,7 @@ class DDQN(BaseAgent, nn.Module):
             
     def train(self, start_idx:int, 
               end_idx:int, 
-              training_epsidoes,
+              training_episodes,
               epsilon_decya_func, 
               initial_epsilon, 
               final_epsilon,
@@ -183,13 +182,13 @@ class DDQN(BaseAgent, nn.Module):
 
         
                 
-        for episode_num in range(1, training_epsidoes+1):
+        for episode_num in range(1, training_episodes+1):
 
             
             epsilon = epsilon_decya_func(initial_epsilon, 
                                             final_epsilon,
                                             episode_num,
-                                            training_epsidoes)
+                                            training_episodes)
             
             tot_reward, mean_reward, std_reward, loss = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
             # Rewards based on Validation Set
@@ -235,7 +234,7 @@ class DDQN(BaseAgent, nn.Module):
 
                 # Print Update
                 print(
-                    f'\r{self.get_name()}: EP {episode_num} of {training_epsidoes} Finished ' +
+                    f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
                     f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
                     f'σR = {std_reward:.2f} | {loss_type}: {stop_metric} = {current_val:.2f}' + stop_msg, end="", flush=False)
             
@@ -251,7 +250,7 @@ class DDQN(BaseAgent, nn.Module):
 
                 # Print Update
                 print(
-                    f'\r{self.get_name()}: EP {episode_num} of {training_epsidoes} Finished ' +
+                    f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
                     f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, ' +
                     f'μR = {mean_reward:.2f} σR = {std_reward:.2f}', end="", flush=False)
              
@@ -259,55 +258,55 @@ class DDQN(BaseAgent, nn.Module):
         print(f'\n{self.get_name()}: Training finished on {self.env.get_name()}[{start_idx}:{end_idx}]')      
     
     def _play_episode(self,epsilon, update_q_freq,update_tgt_freq, step_type):
-            rewards = np.array([])
-            self.step_info = []
-            self.env.reset()
-            self.replay_memory.reset()
-            is_done = False
-            total_steps = 0
-            loss = None
+        rewards = np.array([])
+        self.step_info = []
+        self.env.reset()
+        self.replay_memory.reset()
+        is_done = False
+        total_steps = 0
+        loss = None
 
 
-            while not is_done:
-                if step_type == "testing": # Always use best action
-                    _ , action, reward, _ , end , action_type, q_vals = self._act(0, step_type)
+        while not is_done:
+            if step_type == "testing": # Always use best action
+                _ , action, reward, _ , end , action_type, q_vals = self._act(0, step_type)
+            
+            elif step_type == 'training':    
                 
-                elif step_type == 'training':    
+                # Act On Ev
+                state, action, reward, new_state, end, action_type, q_vals = self._act(epsilon, step_type)
+                exp = Experience(state, self._act_env_to_nn[action], reward,end, new_state)
+                self.replay_memory.append(exp)
+                
+                # Training Q-Network 
+                q_nn_update_bool = total_steps % update_tgt_freq == 0                    
+                if self.replay_memory.is_full() and q_nn_update_bool:
+                    loss = self._learn()
+                
+                # Update Tgt-Network
+                tgt_nn_update_bool = total_steps % update_q_freq == 0                    
+                if tgt_nn_update_bool:
+                    self.Q1_tgt_nn = self._create_tgt_nn(self.Q1_nn,self.device)
+                    self.Q2_tgt_nn = self._create_tgt_nn(self.Q2_nn,self.device)
+
+            else:
+                raise ValueError(f'Invalid step_type: {step_type}')
                     
-                    # Act On Ev
-                    state, action, reward, new_state, end, action_type, q_vals = self._act(epsilon, step_type)
-                    exp = Experience(state, self._act_env_to_nn[action], reward,end, new_state)
-                    self.replay_memory.append(exp)
-                    
-                    # Training Q-Network 
-                    q_nn_update_bool = total_steps % update_tgt_freq == 0                    
-                    if self.replay_memory.is_full() and q_nn_update_bool:
-                        loss = self._learn()
-                    
-                    # Update Tgt-Network
-                    tgt_nn_update_bool = total_steps % update_q_freq == 0                    
-                    if tgt_nn_update_bool:
-                        self.Q1_tgt_nn = self._create_tgt_nn(self.Q1_nn,self.device)
-                        self.Q2_tgt_nn = self._create_tgt_nn(self.Q2_nn,self.device)
 
-                else:
-                    raise ValueError(f'Invalid step_type: {step_type}')
-                        
-
-                
-                step_data = {f'{self.name} Action': action, 
-                            f'{self.name} Action Type': action_type,
-                            f'{self.name} Q_Val Sell': q_vals[0],
-                            f'{self.name} Q_Val Hold': q_vals[1],
-                            f'{self.name} Q_Val Buy': q_vals[2],
-                            f'{self.name} Reward': reward}
-                self.step_info.append(step_data)
-                is_done = end
-                
-                total_steps += 1
-                rewards = np.append(rewards, reward)
-                
-            return np.sum(rewards), np.mean(rewards), np.std(rewards), loss
+            
+            step_data = {f'{self.name} Action': action, 
+                        f'{self.name} Action Type': action_type,
+                        f'{self.name} Q_Val Sell': q_vals[0],
+                        f'{self.name} Q_Val Hold': q_vals[1],
+                        f'{self.name} Q_Val Buy': q_vals[2],
+                        f'{self.name} Reward': reward}
+            self.step_info.append(step_data)
+            is_done = end
+            
+            total_steps += 1
+            rewards = np.append(rewards, reward)
+            
+        return np.sum(rewards), np.mean(rewards), np.std(rewards), loss
     
     def _learn(self):
         
@@ -414,6 +413,15 @@ class DDQN(BaseAgent, nn.Module):
                 loss_type = key
                 init_tgt_val = dic[key][0]
                 return loss_type, init_tgt_val
+    
+    def get_training_episodic_data(self):
+        return pd.DataFrame(self.training_episodic_data)  # Generate a DataFrame from stored step information  
+    
+    def get_testing_episodic_data(self):
+        return pd.DataFrame(self.testing_episodic_data)  # Generate a DataFrame from stored step information
+    
+    def get_step_data(self):
+        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information   
         
 
 Experience = namedtuple('Experience', field_names=['state',

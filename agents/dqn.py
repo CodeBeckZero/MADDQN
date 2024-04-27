@@ -6,6 +6,7 @@ import numpy as np
 from collections import deque, namedtuple
 import random
 from agents.baseagent import BaseAgent
+import pandas as pd
 import os
 import sys   
 
@@ -67,9 +68,7 @@ class DQN(BaseAgent, nn.Module):
         
     
     @torch.no_grad()  
-    def test(self, start_idx:int, 
-              end_idx:int, 
-              testing_epsidoes=1):
+    def test(self, start_idx:int, end_idx:int, testing_episodes=1):
         
         ## Disables Dropout Layers in Q-network
         self.Q_nn.eval()
@@ -80,7 +79,7 @@ class DQN(BaseAgent, nn.Module):
         self.env.update_idx(start_idx,end_idx)
         
                 
-        for episode_num in range(1, testing_epsidoes+1):
+        for episode_num in range(1, testing_episodes+1):
 
             
             
@@ -91,7 +90,7 @@ class DQN(BaseAgent, nn.Module):
             episodic_data.append(epi_data)
             print(
                 (f'\r{self.get_name()} - {self.env.get_name()}[{start_idx}:{end_idx}] ' +
-                f'- Testing Finished - EPIDSODE - {episode_num} of {testing_epsidoes}' +
+                f'- Testing Finished - EPIDSODE - {episode_num} of {testing_episodes}' +
                 f'-> Reward = {reward:.2f}'), end="", flush=True)
         
         
@@ -100,7 +99,7 @@ class DQN(BaseAgent, nn.Module):
             
     def train(self, start_idx:int, 
               end_idx:int, 
-              training_epsidoes,
+              training_episodes,
               epsilon_decya_func, 
               initial_epsilon, 
               final_epsilon, 
@@ -126,13 +125,13 @@ class DQN(BaseAgent, nn.Module):
         self.env.update_idx(start_idx,end_idx)
         
                 
-        for episode_num in range(1, training_epsidoes+1):
+        for episode_num in range(1, training_episodes+1):
 
             
             epsilon = epsilon_decya_func(initial_epsilon, 
                                             final_epsilon,
                                             episode_num,
-                                            training_epsidoes)
+                                            training_episodes)
             
             reward, loss = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
             epi_data = {"Training Episode": episode_num, 
@@ -141,7 +140,7 @@ class DQN(BaseAgent, nn.Module):
                         "Epsilon": epsilon}
             episodic_data.append(epi_data)
             print(
-                (f'\r{self.get_name()}: EPIDSODE {episode_num} of {training_epsidoes} Finished ' +
+                (f'\r{self.get_name()}: EPIDSODE {episode_num} of {training_episodes} Finished ' +
                 f'-> Loss = {loss:.2f}, Reward = {reward:.2f}'), end="", flush=True)
         
         
@@ -276,6 +275,15 @@ class DQN(BaseAgent, nn.Module):
     def import_Q_nn(self,filenamepath):
         self.Q_nn = torch.load(filenamepath)
         print(f'{self.get_name()}: Q-Network Imported from file "{filenamepath}"\n{self.Q_nn}')
+        
+    def get_training_episodic_data(self):
+        return pd.DataFrame(self.training_episodic_data)  # Generate a DataFrame from stored step information  
+    
+    def get_testing_episodic_data(self):
+        return pd.DataFrame(self.testing_episodic_data)  # Generate a DataFrame from stored step information
+    
+    def get_step_data(self):
+        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information   
 
 
 Experience = namedtuple('Experience', field_names=['state',

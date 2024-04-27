@@ -10,6 +10,7 @@ class ContinuousOHLCVEnv(gym.Env):
         
         # Env Name
         self.name = name
+        self.window_size = self._data_window_check(ohlcv_data,stock_price_data)
                            
         # Define Action Space
         self.actions = ('S','H','B') # Sell, Hold, Buy
@@ -57,7 +58,7 @@ class ContinuousOHLCVEnv(gym.Env):
         self.last_commission_cost = 0
         self.total_commission_cost = 0
         self.stock_holding = int(0)
-        self.stock_price = self.stock_price_data[self.current_step]
+        self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
         self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)
 
         # Reset Logging
@@ -121,8 +122,6 @@ class ContinuousOHLCVEnv(gym.Env):
             'Stock Value': self.stock_price * self.stock_holding, 
             'Stock Holdings': self.stock_holding,
             'Stock Price': self.stock_price,
-            "Last Commission Cost": self.last_commission_cost,
-            'Total Commission Cost': self.total_commission_cost,
             'State': self.current_state,
             "Available Actions": self.available_actions,
             "Env Action": action
@@ -144,15 +143,18 @@ class ContinuousOHLCVEnv(gym.Env):
             if step_type == 'testing':
                 self.agent_sequence.remove(agent_name)
 
-
-                        
-        self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)
-
+        self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)        
         
         if  ((not self.agent_sequence and step_type == 'testing') or (step_type == 'training')):
-            self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)
+
+            step_data.update({'New Portfolio Value': self.total_portfolio_value,
+                            'New Cash': self.cash_in_hand,
+                            'New Stock Value': self.stock_price * self.stock_holding, 
+                            'New Stock Holdings': self.stock_holding,
+                            "New Commission Cost": self.last_commission_cost,
+                            'Total Commission Cost': self.total_commission_cost})
             self.current_step += 1
-            self.stock_price = self.stock_price_data[self.current_step]
+            self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
             self.step_info.append(step_data)
             self.agent_sequence = list(self.agents)
         
@@ -177,7 +179,7 @@ class ContinuousOHLCVEnv(gym.Env):
             self.num_stocks_buy = int(np.floor(self.cash_in_hand/self.stock_price)) # Buy Maximum allowed (Current Method)
             self.last_commission_cost = self.num_stocks_buy * self.stock_price * self.commission_rate
             self.total_commission_cost += self.last_commission_cost
-            self.cash_in_hand -= self.num_stocks_buy * self.stock_price - self.last_commission_cost
+            self.cash_in_hand -= self.num_stocks_buy * self.stock_price + self.last_commission_cost
             self.stock_holding = self.num_stocks_buy
             self.position = 1
             self.available_actions = ('S','H')
@@ -237,3 +239,62 @@ class ContinuousOHLCVEnv(gym.Env):
     
     def get_name(self):
         return self.name
+    
+    def _data_window_check(self, env_state_input, stock_price_input):
+        """
+        Function verifies that environmental states and the stock price input have the same length.
+
+        Parameters:
+        env_state_input (np.array): Environmental states input data.
+        stock_price_input (np.array): Stock price input data.
+
+        Returns:
+        window_size: Number of samples in the window.
+        """
+        
+        # 1D Window
+        ## Check if environmental states and stock price inputs are 1D (either single value or 1 row)
+        env_state_1d = len(env_state_input[0].shape) <= 1
+        stock_price_1d = len(stock_price_input[0].shape) <= 1
+        ## Check if both inputs represent 1D windows
+        inputs_1d_window = env_state_1d and stock_price_1d
+        
+        if inputs_1d_window:
+            window_size = 1  # Window size is 1 for 1D inputs
+            return window_size
+            
+        # ND Windows
+        ## Check if environmental states and stock price inputs are ND (more than 1 dimension)
+        env_state_Nd = env_state_input[0].shape[0] >= 2
+        stock_price_Nd = stock_price_input.shape[1] >= 2
+        ## Check if both inputs represent ND windows
+        inputs_Nd_window = env_state_Nd and stock_price_Nd
+        ## Check if the lengths of both inputs are the same
+        same_inputs_window_len = env_state_input[0].shape[0] == stock_price_input.shape[1]
+        if inputs_Nd_window and same_inputs_window_len:
+            window_size = len(stock_price_input)  ## Window size is the length of the input window
+            return window_size
+        # Non-matching
+        raise ValueError("Non-matching window lengths for environmental states and stock prices")
+       
+
+
+    def _update_stock_price(self, stock_price_data, window_size):
+            """
+            Updates the stock price based on current window size. Assumes the last price of the window will be the price RL
+            enviornment will use to compute metrics as the results of trade actions
+
+            Parameters:
+            stock_price_data (np.array): stock price ordered by windows [[10,11.5,10],[12,12,32]] or [10,11.5,10,12,12,32],
+                window_size = 3 and 1 shown respectively. 
+            window_size(int): number of samples in window
+
+            Returns:
+            current_stock_price: Last stock price of window
+            """
+            if window_size == 1:
+                return stock_price_data
+            else:
+                return stock_price_data[-1]
+
+        

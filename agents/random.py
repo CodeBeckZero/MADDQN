@@ -1,19 +1,15 @@
 """Module providing providing printout of blanks for feedback text"""
 import sys
-"""Module used to choose random action from enironment"""
 import random
 import numpy as np
 from agents.baseagent import BaseAgent
+import pandas as pd
 
 class Random(BaseAgent):
     """
     Random agent executes random action on enivornment    
     """
-    def __init__(self,
-                 name: str,
-                 environment,
-                 reward_function,
-                 sub_agents = None):
+    def __init__(self, name: str, environment, reward_function, sub_agents = None):
         
         # Call the initialization of both parent classes
         BaseAgent.__init__(self, name, reward_function, environment, sub_agents)
@@ -83,3 +79,9 @@ class Random(BaseAgent):
         new_state, reward, is_done = self.env.step(self, action, step_type) #Passing Self to allow enviornment to get Agent connected functions
 
         return(state, action, reward, new_state, is_done, action_type)
+    
+    def get_testing_episodic_data(self):
+        return pd.DataFrame(self.testing_episodic_data)  # Generate a DataFrame from stored step information
+    
+    def get_step_data(self):
+        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information   
