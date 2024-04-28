@@ -2,3 +2,5 @@ __pycache__/
 agents/__pycache__/
 tests/__pycache__/
 .pytest_cache/
+utilities/__pycache__/
+enivironments/__pycache__/

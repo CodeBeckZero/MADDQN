@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from cleandata import OHLC_to_Candle_img
+from utilities.cleandata import OHLC_to_Candle_img
 
 def test_basic_correctness():
     # Define a simple OHLC window with known characteristics

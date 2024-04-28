@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import pytest
-from cleandata import batch_data_to_tensor
+from utilities.cleandata import batch_data_to_tensor
 
 @pytest.fixture
 def random_data():

@@ -5,7 +5,7 @@ import numpy as np
 from agents.baseagent import BaseAgent
 import pandas as pd
 
-class Random(BaseAgent):
+class RandomAgent(BaseAgent):
     """
     Random agent executes random action on enivornment    
     """
@@ -77,7 +77,6 @@ class Random(BaseAgent):
         action = random.choice(self.get_avail_actions())
         action_type = "Random"    
         new_state, reward, is_done = self.env.step(self, action, step_type) #Passing Self to allow enviornment to get Agent connected functions
-
         return(state, action, reward, new_state, is_done, action_type)
     
     def get_testing_episodic_data(self):

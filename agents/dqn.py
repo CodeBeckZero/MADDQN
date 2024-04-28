@@ -10,7 +10,7 @@ import pandas as pd
 import os
 import sys   
 
-class DQN(BaseAgent, nn.Module):
+class DqnAgent(BaseAgent, nn.Module):
     def __init__(self,
                  name: str,
                  environment,

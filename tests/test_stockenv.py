@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-from stockenv import ContinuousOHLCVEnv
+from environments.stockenv import ContinuousOHLCVEnv
 from agents.manual import ManualAgent
 
 # Agent Setup
