@@ -4,3 +4,5 @@ tests/__pycache__/
 .pytest_cache/
 utilities/__pycache__/
 enivironments/__pycache__/
+rewards/__pycache__/
+

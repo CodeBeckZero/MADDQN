@@ -251,28 +251,28 @@ class ContinuousOHLCVEnv(gym.Env):
         Returns:
         window_size: Number of samples in the window.
         """
+              
         
         # 1D Window
         ## Check if environmental states and stock price inputs are 1D (either single value or 1 row)
-        env_state_1d = len(env_state_input[0].shape) <= 1
-        stock_price_1d = len(stock_price_input[0].shape) <= 1
+        env_state_1d = env_state_input.shape[1] == 1  
+        stock_price_1d = stock_price_input.shape[1] == 1  
         ## Check if both inputs represent 1D windows
         inputs_1d_window = env_state_1d and stock_price_1d
-        
         if inputs_1d_window:
             window_size = 1  # Window size is 1 for 1D inputs
             return window_size
             
         # ND Windows
         ## Check if environmental states and stock price inputs are ND (more than 1 dimension)
-        env_state_Nd = env_state_input[0].shape[0] >= 2
+        env_state_Nd = env_state_input.shape[1] >= 2
         stock_price_Nd = stock_price_input.shape[1] >= 2
         ## Check if both inputs represent ND windows
         inputs_Nd_window = env_state_Nd and stock_price_Nd
         ## Check if the lengths of both inputs are the same
-        same_inputs_window_len = env_state_input[0].shape[0] == stock_price_input.shape[1]
+        same_inputs_window_len = env_state_input.shape[1] == stock_price_input.shape[1]
         if inputs_Nd_window and same_inputs_window_len:
-            window_size = len(stock_price_input)  ## Window size is the length of the input window
+            window_size = env_state_input.shape[1]  ## Window size is the length of the input window
             return window_size
         # Non-matching
         raise ValueError("Non-matching window lengths for environmental states and stock prices")
@@ -293,8 +293,8 @@ class ContinuousOHLCVEnv(gym.Env):
             current_stock_price: Last stock price of window
             """
             if window_size == 1:
-                return stock_price_data
+                return stock_price_data[0,0]
             else:
-                return stock_price_data[-1]
+                return stock_price_data[-1,0]
 
         

@@ -5,10 +5,16 @@ import numpy as np
 from agents.random import RandomAgent
 from agents.manual import ManualAgent
 from environments.stockenv import ContinuousOHLCVEnv
+from utilities.data import RunningWindowDataset
+from rewards.stockmarket import running_window_reward_function_1D
 
 RANDOM_SEED = 75
 
 def gen_trade_seq(n_actions):
+    """ 
+    Generates trade action sequence of length n_actions with same trade action conditions as
+    ContinousOHLCVEnv. 
+    """
     trade_action_seq = []
     position = 0
     action_space = ('B','H','S')
@@ -33,52 +39,36 @@ def gen_trade_seq(n_actions):
         
     return trade_action_seq
 
-
-def basic_reward_function_1D(env):
-    """Base reward function with 1 future day"""
-    n = 1 # Number of rewards considered in the future
-    current_price = env.stock_price
-    
-    # Check if there are enough elements for the future prices
-    if len(env.ohlcv_raw_data) < env.current_step + n:
-        raise ValueError("Not enough OHLCV data for the future prices")
-    
-    # Tomorrow's Price
-    if env.window_size == 1:
-        tomorrows_price = env.stock_price_data[env.current_step+n]
-    else :
-        tomorrows_price = env.stock_price_data[env.current_step+n][-1]
-        
-    position = env.position
-    reward = (((tomorrows_price - current_price)/current_price))*position
-    opp_cost = 0.0002*(1-position) # Assuming risk-free return of 5% / 252 trading days
-    
-    return (reward - opp_cost)*100
-
 @pytest.fixture
 def setup_1D_environment():
     """Create Environment with state = batch_size 1 of data"""
-    ohlcv_1w_data = np.array([[5,10,3,6], [6,7,5,5], [5,10,5,9], [9,10,2,3], [3,7,5,6]])
-    stock_prices_1w_data = ohlcv_1w_data[:, -1]
-    env_1w = ContinuousOHLCVEnv(name='env_1w', ohlcv_data=ohlcv_1w_data, stock_price_data=stock_prices_1w_data, commission_rate=0.1, initial_cash=100)
+    env_name = 'env_1w'
+    raw_data = np.array([[5,10,3,6], [6,7,5,5], [5,10,5,9], [9,10,2,3], [3,7,5,6]])
+    ohlcv_1w_data = RunningWindowDataset(raw_data,1)
+    stock_prices_1w_data = RunningWindowDataset(raw_data[:,-1],1) # Last value (closing price) is used for stock price
+    env_1w = ContinuousOHLCVEnv(name=env_name, 
+                                ohlcv_data = ohlcv_1w_data, 
+                                stock_price_data = stock_prices_1w_data, 
+                                commission_rate = 0.1, 
+                                initial_cash = 100)
     return env_1w
+
 
 # Agent Setup
 @pytest.fixture
 def setup_manual_agent():
     """Generate agent and actions with 1D reward window"""
-    agent = ManualAgent('manual', None, basic_reward_function_1D)
+    agent = ManualAgent('manual', None, running_window_reward_function_1D)
     random.seed(RANDOM_SEED)
     actions = gen_trade_seq(12)
     agent.input_testing_sequence(actions)
-    print(actions)
-    
+
     return agent
 
 @pytest.fixture
 def setup_random_agent():
     """Generate agent and actions with 1D reward window"""
-    agent = RandomAgent('random', None, basic_reward_function_1D)
+    agent = RandomAgent('random', None, running_window_reward_function_1D)
     random.seed(RANDOM_SEED)
     
     return agent
@@ -120,12 +110,6 @@ def test_random_agent(setup_1D_environment, setup_manual_agent, setup_random_age
 
         # Cleanup
         env.remove_agent(agent.get_name())
-    
-    a = pd.concat([env_testing_data[0], agent_testing_data[0]])
-    a.to_csv('random.csv')
-    b = pd.concat([env_testing_data[1], agent_testing_data[1]])
-    b.to_csv('manual.csv')
-
 
     # Assertions
     # Assert portfolio values are the same

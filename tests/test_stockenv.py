@@ -4,12 +4,14 @@ import pytest
 import torch
 from environments.stockenv import ContinuousOHLCVEnv
 from agents.manual import ManualAgent
+from utilities.data import RunningWindowDataset
+from rewards.stockmarket import running_window_reward_function_1D, running_window_reward_function_3D
 
 # Agent Setup
 @pytest.fixture
 def setup_agent_1D():
     """Generate agent and actions with 1D reward window"""
-    agent = ManualAgent('test_agent', None, basic_reward_function_1D)
+    agent = ManualAgent('test_agent', None, running_window_reward_function_1D)
     agent.input_training_sequence(['B','H','S','H'])
     agent.input_testing_sequence(['H','B','S','H'])
     
@@ -18,61 +20,24 @@ def setup_agent_1D():
 @pytest.fixture
 def setup_agent_3D():
     """Generate agent and actions with 3D reward window"""
-    agent = ManualAgent('test_agent', None, basic_reward_function_3D)
+    agent = ManualAgent('test_agent', None, running_window_reward_function_3D)
     agent.input_training_sequence(['B','H','S','H'])
     agent.input_testing_sequence(['H','B','S','H'])
     
     return agent
 
-def basic_reward_function_1D(env):
-    """Base reward function with 1 future day"""
-    n = 1 # Number of rewards considered in the future
-    current_price = env.stock_price
-    
-    # Check if there are enough elements for the future prices
-    if len(env.ohlcv_raw_data) < env.current_step + n:
-        raise ValueError("Not enough OHLCV data for the future prices")
-    
-    # Tomorrow's Price
-    if env.window_size == 1:
-        tomorrows_price = env.stock_price_data[env.current_step+n]
-    else :
-        tomorrows_price = env.stock_price_data[env.current_step+n][-1]
-        
-    position = env.position
-    reward = (((tomorrows_price - current_price)/current_price))*position
-    opp_cost = 0.0002*(1-position) # Assuming risk-free return of 5% / 252 trading days
-    
-    return (reward - opp_cost)*100
-
-def basic_reward_function_3D(env):
-    """Base reward function with 1 future day"""
-    n = 3 # Number of rewards considered in the future
-    current_price = env.stock_price
-    
-    # Check if there are enough elements for the future prices
-    if len(env.ohlcv_raw_data) < env.current_step + n:
-        raise ValueError("Not enough OHLCV data for the future prices")
-    
-    # Tomorrow's Price
-    if env.window_size == 1:
-        tomorrows_price = env.stock_price_data[env.current_step+n]
-    else :
-        tomorrows_price = env.stock_price_data[env.current_step+n][-1]
-        
-    position = env.position
-    reward = (((tomorrows_price - current_price)/current_price))*position
-    opp_cost = 0.0002*(1-position) # Assuming risk-free return of 5% / 252 trading days
-    
-    return (reward - opp_cost)*100
-
-
 @pytest.fixture
 def setup_1D_environment():
     """Create Environment with state = batch_size 1 of data"""
-    ohlcv_1w_data = np.array([[5,10,3,6], [6,7,5,5], [5,10,5,9], [9,10,2,3], [3,7,5,6]])
-    stock_prices_1w_data = ohlcv_1w_data[:, -1]
-    env_1w = ContinuousOHLCVEnv(name='env_1w', ohlcv_data=ohlcv_1w_data, stock_price_data=stock_prices_1w_data, commission_rate=0.1, initial_cash=100)
+    env_name = 'env_1w'
+    raw_data = np.array([[5,10,3,6], [6,7,5,5], [5,10,5,9], [9,10,2,3], [3,7,5,6]])
+    ohlcv_1w_data = RunningWindowDataset(raw_data,1)
+    stock_prices_1w_data = RunningWindowDataset(raw_data[:,-1],1) # Last value (closing price) is used for stock price
+    env_1w = ContinuousOHLCVEnv(name=env_name, 
+                                ohlcv_data = ohlcv_1w_data, 
+                                stock_price_data = stock_prices_1w_data, 
+                                commission_rate = 0.1, 
+                                initial_cash = 100)
     return env_1w
 
 
@@ -80,13 +45,11 @@ def setup_1D_environment():
 def setup_3D_environment():
     """Create Environment with state = batch_size 3 of data"""
     env_name = 'env_3w'
-    ohlcv_3w_data = np.array([[[8,10,7,7], [7,10,5,5], [5,10,3,6]],
-                              [[7,10,5,5], [5,10,3,6], [6,7,5,5]],
-                              [[5,10,3,6], [6,7,5,5], [5,10,5,9]],
-                              [[6,7,5,5], [5,10,5,9], [9,10,2,3]],
-                              [[5,10,5,9], [9,10,2,3], [3,7,5,6]],
-                              [[6,9,5,9], [9,9,2,5], [5,6,3,6]]])
-    stock_prices_3w_data = ohlcv_3w_data[:,:,-1]
+    raw_data = np.array([[8,10,7,7], [7,10,5,5], [5,10,3,6], [6,7,5,5], 
+                         [5,10,5,9], [9,10,2,3], [3,7,5,6],  [6,9,5,9], 
+                         [9,9,2,5], [5,6,3,6]])
+    ohlcv_3w_data = RunningWindowDataset(raw_data,3)
+    stock_prices_3w_data = RunningWindowDataset(raw_data[:,-1],3) # Last value (closing price) is used for stock price
     env_3w = ContinuousOHLCVEnv(name=env_name,
                             ohlcv_data=ohlcv_3w_data,
                             stock_price_data=stock_prices_3w_data,
@@ -101,7 +64,6 @@ def calculate_expected_portfolio_value(env, action_seq):
         nd_data = True
     else:
         nd_data = False
-    print(nd_data)     
     index_of_b = action_seq.index('B')
     index_of_s = action_seq.index('S')
     if nd_data:
@@ -209,8 +171,7 @@ def test_reward_values(setup_agent_1D, setup_1D_environment, setup_3D_environmen
         
         # Clean Up
         env.remove_agent(agent.get_name())
-    
-        
+
     # Assert the rewards are the same for both 1D and 3D windows environments
     assert (agent_training_data[0]['test_agent Reward'] == agent_training_data[1]['test_agent Reward']).all()
     assert (agent_testing_data[0]['test_agent Reward'] == agent_testing_data[1]['test_agent Reward']).all()
