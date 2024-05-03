@@ -51,7 +51,7 @@ class ContinuousOHLCVEnv(gym.Env):
         # Reset State 
         self.current_step = self.start_idx
         self.position = 0
-        self.current_state = list(self.ohlcv_raw_data[self.current_step]) + [self.position]
+        self.current_state = (self.ohlcv_raw_data[self.current_step], self.position)
 
         # Reset Portfolio
         self.cash_in_hand = self.initial_cash
@@ -165,7 +165,7 @@ class ContinuousOHLCVEnv(gym.Env):
             else:
                 self.available_actions = ('H',)       
 
-        self.current_state = list(self.ohlcv_raw_data[self.current_step]) + [self.position]
+        self.current_state = (self.ohlcv_raw_data[self.current_step], self.position)
 
         next_observation = self.get_observation()
         
@@ -215,7 +215,7 @@ class ContinuousOHLCVEnv(gym.Env):
         self.current_step = self.start_idx
 
     def get_observation(self):
-        return(tuple(self.current_state))
+        return(self.current_state)
 
     def get_step_data(self):
         return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information

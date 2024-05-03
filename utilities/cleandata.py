@@ -410,3 +410,36 @@ def batch_data_to_tensor(input_data: np.array, window_size: int) -> torch.Tensor
     batch_tensor = padded_tensor.view(-1, window_size, n_features)
 
     return batch_tensor
+
+def std_df_data_by_row_range_rtn_narray(df, start_row, end_row):
+    """
+    Normalize each column of a dataframe based on the mean and standard deviation
+    calculated from a specific row range.
+
+    Parameters:
+        df (DataFrame): The input dataframe.
+        start_row (int): The starting row index of the range.
+        end_row (int): The ending row index of the range.
+
+    Returns:
+        DataFrame: A new dataframe with each column normalized based on the specified row range.
+    """
+    narray_data = df.to_numpy()
+    
+    # Extract the subset of rows from the dataframe
+    subset = narray_data[start_row:end_row,:]
+    
+    # Calculate the mean and standard deviation of each column within the subset
+    mean = np.mean(subset, axis=0)
+    std = np.std(subset, axis=0)
+    
+    # Standardize the data
+    standardized_data = (narray_data - mean) / std
+    
+    return standardized_data
+
+def flatten_state(state):
+    stock_data_array, financial_data = state
+    flatten_state = stock_data_array.flatten().tolist()
+    flatten_state.append(financial_data)
+    return flatten_state

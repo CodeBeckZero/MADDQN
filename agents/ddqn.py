@@ -13,8 +13,56 @@ import pandas as pd
 
 
 class DdqnAgent(BaseAgent, nn.Module):
-    def __init__(self,
-                 name: str,
+    """
+    A Double Deep Q-Network (DDQN) reinforcement learning agent with two Q-learning networks complete
+    with each target networks for each Q-network. 
+
+    Args:
+        name (str): 
+            The name of the agent, also used in the environment class.
+        environment (object): 
+            The environment with which the agent interacts.
+        reward_function (function): 
+            Linked reward function to the agent, which is called by the environment class.
+        environment (object): 
+            The environment with which the agent interacts.
+        input_size (int):
+            Number of neurons in the input layer, should match the size of enviornment size
+        hidden_size (int):
+            Number of neurons in each fully connnected layer
+        output_size (int)
+            Number of neurons in the output layer, should match actions space in assigned enviornment
+        activation_function (Torch.func)
+            Activation function used between each fully connected layer
+        num_hidden_layers (int):
+            Number of fully connected neuron layers in ANN
+        buffer_size (int):
+            Memory size of agent to draw upon during ANN update             
+        batch_size (int):
+            Number of samples randomly selected from buffer during each ANN update        
+        alpha (float):  0.1
+            Learning Rate
+        gamma (float): 0.9
+            Discount rate of future rewards 
+        device (str): cpu
+            Device assignment for tensor calculation            
+        opt_lr (float): 0.001,
+            Learning rate of the ANN
+        opt_wgt_dcy (float):  0.0
+            Decay rate of weights in ANN
+        dropout_rate (float): 0.25 
+            Percentage of neurons dropped out during training
+        env_state_mod_func (func):
+            Linked enviornment state modifier function that modifies the observed env state prior
+            to digestion by agent
+        env_state_mod_params (dic):
+            Dictionary where arugments for the linked environment state modifier function can be passed
+        reward_params (dic):
+            Dictionary where arugments for the linked reward function can be passed
+        sub_agents (list, optional): 
+            Sub-agents for multi-agent reinforcement learning (MARL). Defaults to None.
+    """
+    def __init__(self, name: str, 
                  environment,
                  reward_function,
                  input_size: int,
@@ -30,11 +78,18 @@ class DdqnAgent(BaseAgent, nn.Module):
                  opt_lr: float = 0.001,
                  opt_wgt_dcy: float = 0.0,
                  dropout_rate: float = 0.25,
+                 env_state_mod_func = None,
+                 env_state_mod_params = {},
+                 reward_params = None,
                  sub_agents = None):
         
         # Call the initialization of both parent classes
-        BaseAgent.__init__(self, name, reward_function, environment, sub_agents)
+        BaseAgent.__init__(self, name, reward_function, environment, reward_params, sub_agents)
         nn.Module.__init__(self)
+        
+        # Prepossing of Environment State before Agent digest
+        self.env_state_mod_func = env_state_mod_func
+        self.env_state_mod_params = env_state_mod_params
         
         # Device to Compute Tensors
         self.device = device
@@ -355,8 +410,13 @@ class DdqnAgent(BaseAgent, nn.Module):
         
     def _act(self, epsilon, step_type):
         
+        # Agent observes current enviromental state
         state = self.env.get_observation()
+        # Apply State Modifier Function, if defined, to current state prior to agent digest
+        if self.env_state_mod_func!= None:
+            state = self.env_state_mod_func(state, **self.env_state_mod_params)
         
+        # Choose between best or explore action
         if np.random.rand() < epsilon:
             action = random.choice(self.get_avail_actions())
             action_type = "Explore"
@@ -364,9 +424,15 @@ class DdqnAgent(BaseAgent, nn.Module):
             action = self._act_nn_to_env[self._best_action(state, step_type)]
             action_type = "Best"
         
+        # Record all value of current state and action
         q_vals = self.Q1_nn(torch.tensor(state,dtype=torch.float32).to(self.device)).tolist()
-                    
+        
+        # Act on enviornment with selected action and observe new state, reward            
         new_state, reward, is_done = self.env.step(self, action, step_type) #Passing Self to allow enviornment to get Agent connected functions
+        
+        # Apply State Modifier Function, if defined, to next state prior to agent digest
+        if self.env_state_mod_func != None:
+            new_state = self.env_state_mod_func(new_state, **self.env_state_mod_params)
         
         return(state, action, reward, new_state, is_done, action_type, q_vals)
 

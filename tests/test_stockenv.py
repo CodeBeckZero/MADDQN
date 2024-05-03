@@ -5,22 +5,24 @@ import torch
 from environments.stockenv import ContinuousOHLCVEnv
 from agents.manual import ManualAgent
 from utilities.data import RunningWindowDataset
-from rewards.stockmarket import running_window_reward_function_1D, running_window_reward_function_3D
+from rewards.stockmarket import future_profit
 
 # Agent Setup
 @pytest.fixture
-def setup_agent_1D():
+def setup_manual_agent_1F():
     """Generate agent and actions with 1D reward window"""
-    agent = ManualAgent('test_agent', None, running_window_reward_function_1D)
+    reward_params = {'n': 1}
+    agent = ManualAgent('test_agent', None, future_profit, reward_params)
     agent.input_training_sequence(['B','H','S','H'])
     agent.input_testing_sequence(['H','B','S','H'])
     
     return agent
 
 @pytest.fixture
-def setup_agent_3D():
+def setup_manual_agent_3F():
     """Generate agent and actions with 3D reward window"""
-    agent = ManualAgent('test_agent', None, running_window_reward_function_3D)
+    reward_params = {'n': 3}
+    agent = ManualAgent('test_agent', None, future_profit, reward_params)
     agent.input_training_sequence(['B','H','S','H'])
     agent.input_testing_sequence(['H','B','S','H'])
     
@@ -80,14 +82,14 @@ def calculate_expected_portfolio_value(env, action_seq):
     s_trade_cost = num_stock * price_at_s * env.commission_rate        
     return (num_stock * price_at_s) - b_trade_cost - s_trade_cost + cash
 
-def test_portfolio_values(setup_agent_1D, setup_1D_environment, setup_3D_environment):
+def test_portfolio_values(setup_manual_agent_1F, setup_1D_environment, setup_3D_environment):
     """Test correctness of portfolio value calculation considering 1 day forward."""
     env_training_data = []
     env_testing_data = []
     agent_training_data = []
     agent_testing_data = []
     
-    agent = setup_agent_1D 
+    agent = setup_manual_agent_1F
     
     for n_dim in [1, 3]:
         # Setting enivironment and manual agent
@@ -131,7 +133,7 @@ def test_portfolio_values(setup_agent_1D, setup_1D_environment, setup_3D_environ
     assert (np.round(env_training_data[0]['New Portfolio Value'],5) == np.round(env_training_data[1]['New Portfolio Value'],5)).all()
     assert (np.round(env_testing_data[0]['New Portfolio Value'],5) == np.round(env_testing_data[1]['New Portfolio Value'],5)).all()
     
-def test_reward_values(setup_agent_1D, setup_1D_environment, setup_3D_environment):
+def test_reward_values(setup_manual_agent_1F, setup_1D_environment, setup_3D_environment):
     """Test correctness of reward values with 1D reward, regardless of ND enviornment."""
     # Create Data holders
     env_training_data = []
@@ -140,7 +142,7 @@ def test_reward_values(setup_agent_1D, setup_1D_environment, setup_3D_environmen
     agent_testing_data = []
     
     # Create Agent
-    agent = setup_agent_1D
+    agent = setup_manual_agent_1F
     
     for n_dim in [1, 3]:
         # Create Environment      
@@ -177,10 +179,10 @@ def test_reward_values(setup_agent_1D, setup_1D_environment, setup_3D_environmen
     assert (agent_testing_data[0]['test_agent Reward'] == agent_testing_data[1]['test_agent Reward']).all()
 
 
-def test_environment_agent_interaction(setup_agent_1D, setup_1D_environment,setup_agent_3D, setup_3D_environment):
+def test_environment_agent_interaction(setup_manual_agent_1F, setup_1D_environment,setup_manual_agent_3F, setup_3D_environment):
     """Verifies agent and environment actions match and are valid."""
     for n_dim in [1, 3]:
-        agent = setup_agent_1D if n_dim == 1 else setup_agent_3D
+        agent = setup_manual_agent_1F if n_dim == 1 else setup_manual_agent_3F
         env = setup_1D_environment if n_dim == 1 else setup_3D_environment
         env.add_agent(agent.get_name())
         env.set_decision_agent(agent.get_name())

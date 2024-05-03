@@ -6,7 +6,7 @@ from agents.random import RandomAgent
 from agents.manual import ManualAgent
 from environments.stockenv import ContinuousOHLCVEnv
 from utilities.data import RunningWindowDataset
-from rewards.stockmarket import running_window_reward_function_1D
+from rewards.stockmarket import future_profit
 
 RANDOM_SEED = 75
 
@@ -56,9 +56,10 @@ def setup_1D_environment():
 
 # Agent Setup
 @pytest.fixture
-def setup_manual_agent():
+def setup_manual_agent_1F():
     """Generate agent and actions with 1D reward window"""
-    agent = ManualAgent('manual', None, running_window_reward_function_1D)
+    reward_params = {'n': 1}
+    agent = ManualAgent('manual', None, future_profit,reward_params)
     random.seed(RANDOM_SEED)
     actions = gen_trade_seq(12)
     agent.input_testing_sequence(actions)
@@ -66,22 +67,23 @@ def setup_manual_agent():
     return agent
 
 @pytest.fixture
-def setup_random_agent():
+def setup_random_agent_1F():
     """Generate agent and actions with 1D reward window"""
-    agent = RandomAgent('random', None, running_window_reward_function_1D)
+    reward_params = {'n': 1}
+    agent = RandomAgent('random', None, future_profit, reward_params)
     random.seed(RANDOM_SEED)
     
     return agent
 
-def test_random_agent(setup_1D_environment, setup_manual_agent, setup_random_agent):
+def test_random_agent(setup_1D_environment, setup_manual_agent_1F, setup_random_agent_1F):
     """
     Test the behavior and performance of a random agent compared to a manual agent in a given environment.
     """
 
     # Setup Environment and Agents
     env = setup_1D_environment
-    random_agent = setup_random_agent
-    manual_agent = setup_manual_agent
+    random_agent = setup_random_agent_1F
+    manual_agent = setup_manual_agent_1F
 
     # Setup Data Collection
     env_testing_data = []
