@@ -73,3 +73,54 @@ def sliding_window_array(input_data: np.array, window_size: int) -> np.ndarray:
         windowed_array[i] = ndarray_copy[i:i+window_size]
 
     return windowed_array
+
+class DateTimeSlidingWindowDataset(Dataset):
+    def __init__(self, datetimes, window_size):
+        """
+        Initialize the DateTimeSlidingWindowDataset.
+
+        Parameters:
+            datetimes (list of datetime.datetime): The input datetime data.
+            window_size (int): The size of the sliding window.
+        """
+        self.data = self.create_sliding_windows(datetimes, window_size)
+        self.window_size = window_size
+
+    def create_sliding_windows(self, datetimes, window_size):
+        """
+        Creates sliding windows from a list of datetime objects.
+
+        Parameters:
+            datetimes (list of datetime.datetime): List of datetime objects.
+            window_size (int): The sliding window size.
+
+        Returns:
+            list of lists: Each sublist contains datetime objects in a window.
+        """
+        if len(datetimes) < window_size:
+            raise ValueError("The total number of datetime entries must be greater than the window size.")
+        
+        windows = []
+        for i in range(len(datetimes) - window_size + 1):
+            windows.append(datetimes[i:i + window_size])
+        return windows
+
+    def __len__(self):
+        """
+        Return the length of the dataset after considering the sliding window.
+        """
+        return len(self.data)
+
+    def __getitem__(self, index):
+        """
+        Retrieve a window of data from the dataset.
+
+        Parameters:
+            index (int): The index to retrieve.
+
+        Returns:
+            list of datetime.datetime: The window of data.
+        """
+        if not isinstance(index, int):
+            raise TypeError("Index must be an integer")
+        return self.data[index]
