@@ -110,6 +110,7 @@ def normalize_df_ohlcv_by_row_range(df, start_row, end_row):
     
     # Normalize each column of the entire dataframe based on these calculated mean and standard deviation values
     normalized_df = (df[['open','high','low','close','volume']] - mean_values) / std_values
+    normalized_df['date'] = df['date']
     
     return normalized_df
 
