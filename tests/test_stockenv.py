@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
 import pytest
-import torch
+from datetime import datetime
 from environments.stockenv import ContinuousOHLCVEnv
 from agents.manual import ManualAgent
-from utilities.data import RunningWindowDataset
+from utilities.data import UniStockEnvDataStruct
 from rewards.stockmarket import future_profit
 
 # Agent Setup
@@ -32,15 +32,23 @@ def setup_manual_agent_3F():
 def setup_1D_environment():
     """Create Environment with state = batch_size 1 of data"""
     env_name = 'env_1w'
+    columns = ['open','high','low','close']
     raw_data = np.array([[5,10,3,6], [6,7,5,5], [5,10,5,9], [9,10,2,3], [3,7,5,6]])
-    ohlcv_1w_data = RunningWindowDataset(raw_data,1)
-    stock_prices_1w_data = RunningWindowDataset(raw_data[:,-1],1) # Last value (closing price) is used for stock price
+    raw_dates = [datetime(year=2010,month=1,day=1),
+                 datetime(year=2010,month=1,day=2),
+                 datetime(year=2010,month=1,day=3),
+                 datetime(year=2010,month=1,day=4),
+                 datetime(year=2010,month=1,day=5)]
+    df_ohlc = pd.DataFrame(raw_data,columns=columns)
+    df_ohlc['date'] = raw_dates
+    env_data = UniStockEnvDataStruct(df_ohlc,'close',1)
     env_1w = ContinuousOHLCVEnv(name=env_name, 
-                                ohlcv_data = ohlcv_1w_data, 
-                                stock_price_data = stock_prices_1w_data, 
+                                ohlcv_data = env_data['raw_env'], 
+                                stock_price_data = env_data['raw_price_env'], 
                                 commission_rate = 0.1, 
                                 initial_cash = 100)
     return env_1w
+
 
 
 @pytest.fixture
@@ -50,13 +58,24 @@ def setup_3D_environment():
     raw_data = np.array([[8,10,7,7], [7,10,5,5], [5,10,3,6], [6,7,5,5], 
                          [5,10,5,9], [9,10,2,3], [3,7,5,6],  [6,9,5,9], 
                          [9,9,2,5], [5,6,3,6]])
-    ohlcv_3w_data = RunningWindowDataset(raw_data,3)
-    stock_prices_3w_data = RunningWindowDataset(raw_data[:,-1],3) # Last value (closing price) is used for stock price
-    env_3w = ContinuousOHLCVEnv(name=env_name,
-                            ohlcv_data=ohlcv_3w_data,
-                            stock_price_data=stock_prices_3w_data,
-                            commission_rate=0.1,
-                            initial_cash=100)
+    raw_dates = [datetime(year=2010,month=1,day=1),
+                 datetime(year=2010,month=1,day=2),
+                 datetime(year=2010,month=1,day=3),
+                 datetime(year=2010,month=1,day=4),
+                 datetime(year=2010,month=1,day=5),
+                 datetime(year=2010,month=1,day=6),
+                 datetime(year=2010,month=1,day=7),
+                 datetime(year=2010,month=1,day=8),
+                 datetime(year=2010,month=1,day=9),
+                 datetime(year=2010,month=1,day=10)]
+    df_ohlc = pd.DataFrame(raw_data,columns=['open','high','low','close'])
+    df_ohlc['date'] = raw_dates
+    env_data = UniStockEnvDataStruct(df_ohlc,'close',3)
+    env_3w = ContinuousOHLCVEnv(name=env_name, 
+                                ohlcv_data = env_data['rw_raw_env'], 
+                                stock_price_data = env_data['rw_raw_price_env'], 
+                                commission_rate = 0.1, 
+                                initial_cash = 100)
 
     return env_3w
 

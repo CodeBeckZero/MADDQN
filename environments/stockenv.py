@@ -256,7 +256,7 @@ class ContinuousOHLCVEnv(gym.Env):
         # 1D Window
         ## Check if environmental states and stock price inputs are 1D (either single value or 1 row)
         env_state_1d = env_state_input.shape[1] == 1  
-        stock_price_1d = stock_price_input.shape[1] == 1  
+        stock_price_1d = stock_price_input.shape[1] == 1 
         ## Check if both inputs represent 1D windows
         inputs_1d_window = env_state_1d and stock_price_1d
         if inputs_1d_window:
@@ -292,6 +292,7 @@ class ContinuousOHLCVEnv(gym.Env):
             Returns:
             current_stock_price: Last stock price of window
             """
+            print(stock_price_data,stock_price_data.shape,type(stock_price_data))
             if window_size == 1:
                 return stock_price_data[0,0]
             else:

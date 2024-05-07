@@ -1,8 +1,12 @@
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
+import pandas as pd
+import copy
 
+
+    
 class RunningWindowDataset(Dataset):
-    def __init__(self, data:np.array, window_size:int):
+    def __init__(self, data, window_size:int,data_type = 'DataFrame'):
         """
         Initialize the RunningWindowDataset.
 
@@ -10,15 +14,23 @@ class RunningWindowDataset(Dataset):
             data (numpy.ndarray): The input data.
             window_size (int): The size of the sliding window.
         """
-        self.data = sliding_window_array(data, window_size)
+        match data_type:
+            case 'DataFrame':
+                self.data = self._running_window_setup(pd.DataFrame(data), window_size)
+            
+            case 'array':
+                self.data = self._running_window_setup(np.array(data), window_size)
+            case _:
+                raise ValueError(f'Invalid data_type input: {data_type}')
+
         self.window_size = window_size
-        self.shape = self.data.shape
+        self.shape = (len(self.data),self.data[0].shape[0],self.data[0].shape[1])
 
     def __len__(self):
         """
         Return the length of the dataset after considering the sliding window.
         """
-        return self.data.shape[0]
+        return len(self.data)
 
     def __getitem__(self, index):
         """
@@ -43,84 +55,186 @@ class RunningWindowDataset(Dataset):
 
         return window_data
 
-def sliding_window_array(input_data: np.array, window_size: int) -> np.ndarray:
-    """
-    Converts a NumPy array into a NumPy ndarray with specified sliding window size.
+    def _running_window_setup(self, input_data, window_size: int):
+        """
+        Converts a NumPy array into a NumPy ndarray with specified sliding window size.
 
-    Parameters:
-        input_data (np.array): An array with samples as rows and features as columns.
-        window_size (int): Number of samples in each window.
+        Parameters:
+            input_data (np.array): An array with samples as rows and features as columns.
+            window_size (int): Number of samples in each window.
 
-    Returns:
-        np.ndarray: NumPy ndarray with the shape of [Batch, Sample #, Feature #].
-    """
-    # Convert input data to a NumPy ndarray
-    ndarray_copy = np.array(input_data, copy=True)
+        Returns:
+            np.ndarray: NumPy ndarray with the shape of [Batch, Sample #, Feature #].
+        """
+
+        # Calculate the number of windows
     
-    # Ensure input_data is at least 2D
-    if ndarray_copy.ndim == 1:
-        ndarray_copy = ndarray_copy.reshape(-1, 1)
+        num_windows = input_data.shape[0] - window_size + 1
 
-    # Calculate the number of windows
-    total_samples = ndarray_copy.shape[0]
-    num_windows = total_samples - window_size + 1
+        # Create an empty array to store the windowed data
+        windowed_data = []
 
-    # Create an empty array to store the windowed data
-    windowed_array = np.zeros((num_windows, window_size, ndarray_copy.shape[1]))
+        # Iterate over the input data and create windows
+        for i in range(num_windows):
+            temp = input_data[i:i+window_size].copy()
+            windowed_data.append(temp)
+        return windowed_data
 
-    # Iterate over the input data and create windows
-    for i in range(num_windows):
-        windowed_array[i] = ndarray_copy[i:i+window_size]
 
-    return windowed_array
 
-class DateTimeSlidingWindowDataset(Dataset):
-    def __init__(self, datetimes, window_size):
-        """
-        Initialize the DateTimeSlidingWindowDataset.
+    
 
-        Parameters:
-            datetimes (list of datetime.datetime): The input datetime data.
-            window_size (int): The size of the sliding window.
-        """
-        self.data = self.create_sliding_windows(datetimes, window_size)
-        self.window_size = window_size
-
-    def create_sliding_windows(self, datetimes, window_size):
-        """
-        Creates sliding windows from a list of datetime objects.
-
-        Parameters:
-            datetimes (list of datetime.datetime): List of datetime objects.
-            window_size (int): The sliding window size.
-
-        Returns:
-            list of lists: Each sublist contains datetime objects in a window.
-        """
-        if len(datetimes) < window_size:
-            raise ValueError("The total number of datetime entries must be greater than the window size.")
+class UniStockEnvDataStruct():
+    
+    def __init__(self,clean_ohlcv_df,env_price_col,window_size):
         
-        windows = []
-        for i in range(len(datetimes) - window_size + 1):
-            windows.append(datetimes[i:i + window_size])
-        return windows
+        # Raw OHLCV Data & Price Data for Stockmarket Environment
+        raw_env_df = clean_ohlcv_df.drop(columns=['date']).copy()
+        raw_array = self._df_to_env_array(raw_env_df,window_size)
+        price_array = self._df_to_env_array(clean_ohlcv_df[env_price_col],window_size)
+        
+        # Long Form DFs for Neuralforecast 
+        timesnet_df = self._gen_long_form_df_from_ohlcv(clean_ohlcv_df)
+        focused_timesnet_df = timesnet_df[timesnet_df['unique_id'] == env_price_col].copy().reset_index(drop=True)
+        
+        self.data = {'raw_df': clean_ohlcv_df,
+                    'raw_env': raw_array,
+                    'raw_price_env': price_array,
+                    'long_raw': timesnet_df,
+                    'long_raw_price': focused_timesnet_df}
 
-    def __len__(self):
-        """
-        Return the length of the dataset after considering the sliding window.
-        """
-        return len(self.data)
+        if window_size > 1:
+            rw_raw_df = RunningWindowDataset(clean_ohlcv_df, window_size)
+            rw_focused_timesnet_df = RunningWindowDataset(focused_timesnet_df,window_size)
+            rw_raw_env = self._df_to_env_array(raw_env_df, window_size)
+            rw_closing_price = self._df_to_env_array(clean_ohlcv_df[[env_price_col]],window_size)
+            
+            rw_wstd_df = copy.deepcopy(rw_raw_df)
+            for window in range(len(rw_wstd_df)):
+                self._standardize_dataframe_inplace(rw_wstd_df[window], exclude_columns=['date'])
+            
+            rw_wstd_price = copy.deepcopy(rw_closing_price)
+            for window in range(len(rw_wstd_price)):
+                self._standardize_array_inplace(rw_wstd_price[window])
 
-    def __getitem__(self, index):
+            rw_wstd_env = copy.deepcopy(rw_raw_env)
+            for window in range(len(rw_wstd_env)):
+                self._standardize_array_inplace(rw_wstd_env[window])
+      
+            rw_wstd_focused_timesnet_df = copy.deepcopy(rw_focused_timesnet_df)          
+            for window in range(len(rw_wstd_focused_timesnet_df)):
+                self._standardize_dataframe_inplace(rw_wstd_focused_timesnet_df[window], exclude_columns=['ds','unique_id'])    
+        
+            self.data.update({'rw_wstd_df': rw_wstd_df,
+                              'rw_raw_env': rw_raw_env,
+                              'rw_wstd_env': rw_wstd_env,
+                              'rw_raw_price_env':rw_closing_price,
+                              'rw_wstd_price_env': rw_wstd_price,
+                              'rw_long_raw_price': rw_focused_timesnet_df,
+                              'rw_long_wstd_price': rw_wstd_focused_timesnet_df})
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+    def __delitem__(self, key):
+        del self.data[key]
+
+    def __repr__(self):
+        return repr(self.data)
+
+        
+    def _gen_long_form_df_from_ohlcv(self, df_date_ohlcv):
         """
-        Retrieve a window of data from the dataset.
+        Generate long-form timeseries dataset suitable for TimesNet model from OHLCV DataFrame.
 
         Parameters:
-            index (int): The index to retrieve.
+        - df_date_ohlcv: DataFrame containing OHLCV data with 'date' column and columns for each value (e.g., open, high, low, close, volume).
 
         Returns:
-            list of datetime.datetime: The window of data.
+        - combined_df: Long-form DataFrame with columns 'ds', 'unique_id', and 'y', suitable for TimesNet model.
         """
-        if not isinstance(index, int):
-            raise TypeError("Index must be an integer")
-        return self.data[index]
+
+        # Extract names of value columns (excluding 'date')
+        value_names = [col for col in df_date_ohlcv.columns if col != 'date']
+        
+        # Initialize dictionary to store DataFrames by value
+        df_by_value = {}
+
+        # Iterate through each value column
+        for value in value_names:
+            # Select 'date' and value column, copy DataFrame
+            new_df = df_date_ohlcv[['date', value]].copy()
+
+            # Rename columns to match TimesNet input format
+            new_df = new_df.rename(columns={'date': 'ds', value: 'y'})
+
+            # Add 'unique_id' column
+            new_df.insert(1, 'unique_id', value)
+
+            # Store DataFrame in dictionary with value as key
+            df_by_value[value] = new_df
+            
+        
+        # Combine DataFrames from dictionary into a single DataFrame
+        combined_df = pd.concat(df_by_value.values(), axis=0, ignore_index=True)
+        
+        # Return combined DataFrame
+        return combined_df
+    
+    def _standardize_dataframe_inplace(self,df, exclude_columns=[]):
+        # Convert exclude_columns to list if it's not already
+        if isinstance(exclude_columns, str):
+            exclude_columns = [exclude_columns]
+        elif not isinstance(exclude_columns, list):
+            exclude_columns = []
+         
+        # Calculate mean and standard deviation for each column excluding the specified columns
+        means = df.drop(columns=exclude_columns).mean()
+        stds = df.drop(columns=exclude_columns).std()
+
+        # Subtract mean and divide by standard deviation for each column excluding the specified columns
+        df.loc[:, df.columns.difference(exclude_columns)] -= means
+        df.loc[:, df.columns.difference(exclude_columns)] /= stds
+    
+    def _standardize_array_inplace(self, arr):
+        # Calculate mean and standard deviation for each column
+        means = np.mean(arr, axis=0)
+        stds = np.std(arr, axis=0)
+
+        # Subtract mean and divide by standard deviation for each column
+        arr -= means
+        arr /= stds
+        
+    def _df_to_env_array(self,input_data: pd.DataFrame, window_size: int) -> np.ndarray:
+        """
+        Converts a NumPy array into a NumPy ndarray with specified sliding window size.
+
+        Parameters:
+            input_data (np.array): An array with samples as rows and features as columns.
+            window_size (int): Number of samples in each window.
+
+        Returns:
+            np.ndarray: NumPy ndarray with the shape of [Batch, Sample #, Feature #].
+        """
+        # Convert input data to a NumPy ndarray
+        ndarray_copy = input_data.to_numpy().copy()
+        
+        # Ensure input_data is at least 2D
+        if ndarray_copy.ndim == 1:
+            ndarray_copy = ndarray_copy.reshape(-1, 1)
+
+        # Calculate the number of windows
+        total_samples = ndarray_copy.shape[0]
+        num_windows = total_samples - window_size + 1
+
+        # Create an empty array to store the windowed data
+        windowed_array = np.zeros((num_windows, window_size, ndarray_copy.shape[1]))
+
+        # Iterate over the input data and create windows
+        for i in range(num_windows):
+            windowed_array[i] = ndarray_copy[i:i+window_size]
+
+        return windowed_array
