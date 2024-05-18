@@ -292,7 +292,6 @@ class ContinuousOHLCVEnv(gym.Env):
             Returns:
             current_stock_price: Last stock price of window
             """
-            print(stock_price_data,stock_price_data.shape,type(stock_price_data))
             if window_size == 1:
                 return stock_price_data[0,0]
             else:

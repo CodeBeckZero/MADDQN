@@ -414,7 +414,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         state = self.env.get_observation()
         # Apply State Modifier Function, if defined, to current state prior to agent digest
         if self.env_state_mod_func!= None:
-            state = self.env_state_mod_func(state, **self.env_state_mod_params)
+            state = self.env_state_mod_func(self.env, **self.env_state_mod_params)
         
         # Choose between best or explore action
         if np.random.rand() < epsilon:
@@ -432,7 +432,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         # Apply State Modifier Function, if defined, to next state prior to agent digest
         if self.env_state_mod_func != None:
-            new_state = self.env_state_mod_func(new_state, **self.env_state_mod_params)
+            new_state = self.env_state_mod_func(self.env, **self.env_state_mod_params)
         
         return(state, action, reward, new_state, is_done, action_type, q_vals)
 

@@ -1,7 +1,10 @@
 import numpy as np
 from torch.utils.data import Dataset
+from neuralforecast.core import NeuralForecast
+from sklearn import preprocessing
 import pandas as pd
 import copy
+import os
 
 
     
@@ -79,10 +82,6 @@ class RunningWindowDataset(Dataset):
             temp = input_data[i:i+window_size].copy()
             windowed_data.append(temp)
         return windowed_data
-
-
-
-    
 
 class UniStockEnvDataStruct():
     
@@ -238,3 +237,161 @@ class UniStockEnvDataStruct():
             windowed_array[i] = ndarray_copy[i:i+window_size]
 
         return windowed_array
+    
+    def gen_rw_idxs(self,datetime_pair):
+        """
+        Generate tuple with indices for starting and ending rows within a specified date range.
+
+        Args:
+        - datetime_pair (tuple): A tuple containing the beginning and ending dates of the desired range.
+        - uni_data_struc (dict): A dictionary containing structured data, including a DataFrame 'raw_df' with a 'date' column.
+
+        Returns:
+        - tuple: A tuple representing the range of row indices within the specified date range.
+        """
+
+        # Check if datetime_pair contains exactly two elements
+        if len(datetime_pair) != 2:
+            raise ValueError("Require beginning and ending date")
+        
+        # Check if the beginning date is before the ending date
+        if datetime_pair[0] > datetime_pair[1]:
+            raise ValueError("Require beginning and ending date to be in proper order")
+
+        # Extract dimensions of the raw data
+        n_rw, rw_len, _ = self.data['rw_raw_env'].shape
+        
+        # Extract the 'date' column from the DataFrame
+        df_datetime = self.data['raw_df']['date']
+
+        # Filter rows within the specified date range
+        ranged_df = df_datetime.loc[(df_datetime >= datetime_pair[0]) & (df_datetime <= datetime_pair[1])]
+        
+        # Find the index of the first and last rows within the filtered date range
+        closet_start_idx = ranged_df.index[0]
+        closet_end_idx = ranged_df.index[-1]
+        
+        # Calculate the starting and ending row indices for the sliding window
+        start_rw_idx = closet_start_idx
+        end_rw_idx = closet_end_idx - rw_len + 1
+        
+        # Return a tuple representing the range of row indices for the sliding window
+        return (int(start_rw_idx), int(end_rw_idx))
+
+class TimesNetProcessing:
+    def __init__(self, uni_data, loc_trained_model):
+        """
+        Initialize the TimesNetProcessing class.
+
+        Args:
+        - uni_data: Dictionary containing universal data.
+        - loc_trained_model: Path to the trained model file.
+
+        Raises:
+        - FileNotFoundError: If the specified model path does not exist.
+        """
+        self.data = uni_data
+        self.scaler = preprocessing.MinMaxScaler()
+
+        # Ensure the directory and file exist
+        if os.path.exists(loc_trained_model):
+            self.nf = NeuralForecast.load(path=loc_trained_model)
+        else:
+            raise FileNotFoundError(f"Model path {loc_trained_model} does not exist.")
+
+    def process(self, env):
+        """
+        Process the environment data.
+
+        Args:
+        - env: Environment object.
+
+        Returns:
+        - agent_state: Processed agent state.
+        """
+        # Get observation from the environment
+        raw_state, position = env.get_observation()
+        cur_idx = env.current_step
+        columns = ['open', 'high', 'low', 'close', 'volume']
+
+        # Check if the environmental state is in the form of OHLCV data
+        if raw_state.shape[1] != len(columns):
+            raise ValueError('Environmental State is not in the form of OHLCV data')
+
+        # Get the index for the current state
+        std_cur_state_idx = raw_state.shape[0]
+
+        # Create a dictionary to store environmental state by column
+        env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(columns)}
+
+        # Predict model output and extend 'close' column
+        model_output = self.nf.predict(self.data[env.name]['rw_long_raw_price'][cur_idx])['timesnet'].to_numpy()
+        env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])
+
+        # Normalize each column separately
+        for col in columns:
+            env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
+
+        # Extract normalized prediction and current state
+        norm_predict = env_state_by_col_dic['close'][-5:].tolist()
+        norm_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in columns]
+
+        # Append position to the normalized current state
+        norm_current_state.append(position)
+
+        # Concatenate normalized current state with normalized prediction
+        agent_state = norm_current_state + norm_predict
+
+        return agent_state
+    
+    def csv_process(self, env):
+                # Get observation from the environment
+        raw_state, position = env.get_observation()
+        cur_idx = env.current_step
+        columns = ['open', 'high', 'low', 'close', 'volume']
+
+        # Check if the environmental state is in the form of OHLCV data
+        if raw_state.shape[1] != len(columns):
+            raise ValueError('Environmental State is not in the form of OHLCV data')
+
+        # Get the index for the current state
+        std_cur_state_idx = raw_state.shape[0]
+
+        # Create a dictionary to store environmental state by column
+        env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(columns)}
+        
+        # Find prediction
+        model_output_date = self.data[env.name]['rw_long_raw_price'][cur_idx]['ds'].iloc[-1]
+        filtered_date = self.env_csv['date'] == model_output_date
+        desired_columns = ['1d', '2d', '3d', '4d', '5d']
+        model_output = self.env_csv.loc[filtered_date, desired_columns].values.flatten()
+        env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])
+        
+        
+        # Normalize each column separately
+        for col in columns:
+            env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
+        
+        # Extract normalized prediction and current state
+        norm_predict = env_state_by_col_dic['close'][-5:].tolist()
+        norm_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in columns]
+
+        # Append position to the normalized current state
+        norm_current_state.append(position)
+
+        # Concatenate normalized current state with normalized prediction
+        agent_state = norm_current_state + norm_predict
+
+        return agent_state
+                       
+    def upload_csv(self,csv_loc):
+        self.env_csv = pd.read_csv(csv_loc)
+        self.env_csv['date'] = pd.to_datetime(self.env_csv['date'])
+        
+        
+        
+        
+    
+            
+        
+        
