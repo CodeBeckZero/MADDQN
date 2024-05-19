@@ -381,7 +381,7 @@ class DdqnAgent(BaseAgent, nn.Module):
             target = b_Q_nn_qvals.clone().to(self.device)
             
             # Ensure batch_size is moved to CPU for indexing
-            b_actions = b_actions.cpu()
+            b_actions = b_actions.to(self.device)
             
             for i in range(self.batch_size):
                 target[i, b_actions[i]] = b_rewards[i] + self.gamma * act_vals[i] * (not b_done[i])
@@ -443,7 +443,7 @@ class DdqnAgent(BaseAgent, nn.Module):
             q_values = q_values.detach()
         # Compute the best action based on the Q-values
         avaliable_actions = [self._act_env_to_nn[act] for act in self.get_avail_actions()]
-        selected_qvals = torch.index_select(q_values, 0 ,torch.tensor(avaliable_actions))
+        selected_qvals = torch.index_select(q_values, 0 ,torch.tensor(avaliable_actions).to(self.device))
         agrmax_index = torch.argmax(selected_qvals)
         best_action = avaliable_actions[agrmax_index]
         return best_action

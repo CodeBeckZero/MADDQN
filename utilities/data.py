@@ -279,7 +279,7 @@ class UniStockEnvDataStruct():
         return (int(start_rw_idx), int(end_rw_idx))
 
 class TimesNetProcessing:
-    def __init__(self, uni_data, loc_trained_model):
+    def __init__(self, uni_data):
         """
         Initialize the TimesNetProcessing class.
 
@@ -293,7 +293,8 @@ class TimesNetProcessing:
         self.data = uni_data
         self.scaler = preprocessing.MinMaxScaler()
 
-        # Ensure the directory and file exist
+    def upload_model(self,loc_trained_model):
+                # Ensure the directory and file exist
         if os.path.exists(loc_trained_model):
             self.nf = NeuralForecast.load(path=loc_trained_model)
         else:
@@ -309,40 +310,44 @@ class TimesNetProcessing:
         Returns:
         - agent_state: Processed agent state.
         """
-        # Get observation from the environment
-        raw_state, position = env.get_observation()
-        cur_idx = env.current_step
-        columns = ['open', 'high', 'low', 'close', 'volume']
+        if hasattr(self, 'nf'):
 
-        # Check if the environmental state is in the form of OHLCV data
-        if raw_state.shape[1] != len(columns):
-            raise ValueError('Environmental State is not in the form of OHLCV data')
+          # Get observation from the environment
+          raw_state, position = env.get_observation()
+          cur_idx = env.current_step
+          columns = ['open', 'high', 'low', 'close', 'volume']
 
-        # Get the index for the current state
-        std_cur_state_idx = raw_state.shape[0]
+          # Check if the environmental state is in the form of OHLCV data
+          if raw_state.shape[1] != len(columns):
+              raise ValueError('Environmental State is not in the form of OHLCV data')
 
-        # Create a dictionary to store environmental state by column
-        env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(columns)}
+          # Get the index for the current state
+          std_cur_state_idx = raw_state.shape[0]
 
-        # Predict model output and extend 'close' column
-        model_output = self.nf.predict(self.data[env.name]['rw_long_raw_price'][cur_idx])['timesnet'].to_numpy()
-        env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])
+          # Create a dictionary to store environmental state by column
+          env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(columns)}
 
-        # Normalize each column separately
-        for col in columns:
-            env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
+          # Predict model output and extend 'close' column
+          model_output = self.nf.predict(self.data[env.name]['rw_long_raw_price'][cur_idx])['timesnet'].to_numpy()
+          env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])
 
-        # Extract normalized prediction and current state
-        norm_predict = env_state_by_col_dic['close'][-5:].tolist()
-        norm_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in columns]
+          # Normalize each column separately
+          for col in columns:
+              env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
 
-        # Append position to the normalized current state
-        norm_current_state.append(position)
+          # Extract normalized prediction and current state
+          norm_predict = env_state_by_col_dic['close'][-5:].tolist()
+          norm_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in columns]
 
-        # Concatenate normalized current state with normalized prediction
-        agent_state = norm_current_state + norm_predict
+          # Append position to the normalized current state
+          norm_current_state.append(position)
 
-        return agent_state
+          # Concatenate normalized current state with normalized prediction
+          agent_state = norm_current_state + norm_predict
+
+          return agent_state
+        else:
+          raise AttributeError("NeuralForecast Model was not loaded")
     
     def csv_process(self, env):
                 # Get observation from the environment

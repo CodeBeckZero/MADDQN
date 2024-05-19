@@ -5,5 +5,8 @@ tests/__pycache__/
 utilities/__pycache__/
 enivironments/__pycache__/
 rewards/__pycache__/
-gen_data/unidata.pkl
+layers/
+checkpoints/
+input_data/^HSI_daily.csv
+lightning_logs/
 
