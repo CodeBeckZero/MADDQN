@@ -52,4 +52,10 @@ def risk_reward(env, n):
     rewards_mean = np.mean(rewards)  # Calculate mean using NumPy's mean function
     rewards_std = np.std(rewards)  # Calculate standard deviation using NumPy's std function
     
+    # If no trade actions occur, reward function will have division by 0
+    if np.round(rewards_std,5) == 0:
+         rewards_std = 1
+        
+        
+    
     return (rewards_mean / rewards_std) * position
