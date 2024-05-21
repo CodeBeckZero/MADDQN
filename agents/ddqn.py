@@ -149,9 +149,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
                 
         for episode_num in range(1, testing_episodes+1):
-
-            
-            
+          
             tot_reward, mean_reward, std_reward, loss = self._play_episode(0, None , None , 'testing')
             epi_data = {"Testing Episode": episode_num, 
                         "Total Reward": tot_reward,
@@ -180,16 +178,16 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         self.env.update_idx(val_start_idx,val_end_idx)
         
-        tot_reward, mean_reward, std_reward, loss = self._play_episode(0, None , None , 'testing')
-        ror = self.env.step_info[-1]['Portfolio Value'] / self.env.initial_cash
-        cost = self.env.step_info[-1]['Total Commission Cost']
+        tot_val_metric, mean_val_metric, std_val_metric, loss = self._play_episode(0, None , None , 'validating')
+        ror = self.env.step_info[-1]['Portfolio Value'] / self.env.initial_cash ## likely to remove because of val_metric_func
+        cost = self.env.step_info[-1]['Total Commission Cost'] ## likely to remove because of val_metric_func
         
 
         ## Reenable Dropout Layers in Q-networks
         self.Q1_nn.train()
         self.Q2_nn.train()
         
-        return tot_reward, mean_reward, std_reward, loss, ror, cost
+        return tot_val_metric, mean_val_metric, std_val_metric, loss, ror, cost
         
             
     def train(self, start_idx:int, 
@@ -198,15 +196,29 @@ class DdqnAgent(BaseAgent, nn.Module):
               epsilon_decya_func, 
               initial_epsilon, 
               final_epsilon,
-              val_start_idx:int,
-              val_end_idx:int,
-              save_path = str,
-              early_stop = False, 
-              stop_metric = 'val_ror',
+              val_start_idx:int = None,
+              val_end_idx:int = None,
+              save_path:str = None,
+              early_stop = False,
+              metric_func = None,
+              metric_func_arg = {}, 
+              stop_metric = 'val_tot_r',
               stop_patience = 7,
               stop_delta = 0.01,
               update_q_freq = None,
               update_tgt_freq = None):
+        
+        self.metric_func = metric_func
+        self.metric_func_arg = metric_func_arg
+        
+        self.validate = (val_start_idx is not None) and (val_end_idx is not None)
+        
+        if self.validate:
+            if metric_func == None:
+               raise ValueError("Metric function not defined for validation")
+        
+        if not self.validate and (stop_metric in {'val_tot_r', 'val_avg_r', 'val_std_r'}):
+            raise ValueError("stop_metric chosen is based on validation set, validation set not defined (val_start_idx, val_end_idx)")
         
         # Q-Network is trained by step by default
         if update_q_freq is None:
@@ -220,7 +232,11 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.Q1_nn.train()
         self.Q2_nn.train()
 
-        print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}] -> Validation on {self.env.get_name()}[{val_start_idx}:{val_end_idx}]')
+        if self.validate:
+            print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}] -> Validation on {self.env.get_name()}[{val_start_idx}:{val_end_idx}]')
+        else:
+            print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
+        
         
         model_save_path = save_path + "/" + self.name
         if not os.path.exists(model_save_path):
@@ -247,22 +263,32 @@ class DdqnAgent(BaseAgent, nn.Module):
             
             tot_reward, mean_reward, std_reward, loss = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
             # Rewards based on Validation Set
-            val_tot_reward, val_avg_reward, val_std_reward, _, ror, cost = self._validate(val_start_idx,val_end_idx)
-            # Reset Enviornment to Training Indices
-            self.env.update_idx(start_idx,end_idx) 
+            if self.validate:
+                val_tot_reward, val_avg_reward, val_std_reward, _, ror, cost = self._validate(val_start_idx,val_end_idx)
+                # Reset Enviornment to Training Indices
+                self.env.update_idx(start_idx,end_idx)              
+                epi_data = {"trn_ep": episode_num,
+                            "tot_r": tot_reward,
+                            "avg_r": mean_reward,
+                            "std_r": std_reward,
+                            'Q1_loss': loss[0],
+                            'Q2_loss': loss[1],                        
+                            "epsilon": epsilon,
+                            'val_tot_r': val_tot_reward,
+                            'val_avg_r': val_avg_reward,
+                            'val_std_r': val_std_reward,
+                            'val_ror': ror,
+                            'val_comm_cost': cost}
+                
+            else: 
+                epi_data = {"trn_ep": episode_num, 
+                            "tot_r": tot_reward,
+                            "avg_r": mean_reward,
+                            "std_r": std_reward,
+                            'Q1_loss': loss[0],
+                            'Q2_loss': loss[1],                        
+                            "epsilon": epsilon}
             
-            epi_data = {"trn_ep": episode_num, 
-                        "tot_r": tot_reward,
-                        "avg_r": mean_reward,
-                        "std_r": std_reward,
-                        'Q1_loss': loss[0],
-                        'Q2_loss': loss[1],                        
-                        "epsilon": epsilon,
-                        'val_tot_r': val_tot_reward,
-                        'val_avg_r': val_avg_reward,
-                        'val_std_r': val_std_reward,
-                        'val_ror': ror,
-                        'val_comm_cost': cost}
             episodic_data.append(epi_data)
             
             if early_stop:
@@ -323,7 +349,7 @@ class DdqnAgent(BaseAgent, nn.Module):
 
 
         while not is_done:
-            if step_type == "testing": # Always use best action
+            if step_type == "testing" or step_type == 'validating': # Always use best action
                 _ , action, reward, _ , end , action_type, q_vals = self._act(0, step_type)
             
             elif step_type == 'training':    
@@ -487,7 +513,13 @@ class DdqnAgent(BaseAgent, nn.Module):
         return pd.DataFrame(self.testing_episodic_data)  # Generate a DataFrame from stored step information
     
     def get_step_data(self):
-        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information   
+        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information
+    
+    def get_metric(self):
+        """
+        Returns the value of the metric function
+        """
+        return self.metric_func(self.env, **self.metric_func_arg)   
         
 
 Experience = namedtuple('Experience', field_names=['state',

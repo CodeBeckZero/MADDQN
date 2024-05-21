@@ -291,7 +291,7 @@ class TimesNetProcessing:
         - FileNotFoundError: If the specified model path does not exist.
         """
         self.data = uni_data
-        self.scaler = preprocessing.MinMaxScaler()
+        self.scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
 
     def upload_model(self,loc_trained_model):
                 # Ensure the directory and file exist

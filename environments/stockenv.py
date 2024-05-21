@@ -21,6 +21,9 @@ class ContinuousOHLCVEnv(gym.Env):
         feature_min = np.array([-20.0] * num_features)  # Assuming Normalization over mean of 0
         feature_max = np.array([20.0] * num_features)  # Assuming Normalization over mean of 0
         self.observation_space = spaces.Box(low=feature_min, high=feature_max, dtype=np.float32)
+        self.action_functions = {"B": self._buy,
+                                 "H": self._hold,
+                                 "S": self._sell}
         
         # Init Input Data
         self.ohlcv_raw_data = ohlcv_data
@@ -101,8 +104,10 @@ class ContinuousOHLCVEnv(gym.Env):
         try:
             if action not in self.available_actions:
                 raise ValueError(f'Action {action} not in {self.available_actions}')
+            
             if agent_name not in self.agents:
                 raise ValueError(f'Invalid agent "{agent_name}"')
+            
             if step_type == "testing":
                 if not self.DECISION_AGENT:
                     raise ValueError('Decision Agent not assigned')
@@ -127,25 +132,17 @@ class ContinuousOHLCVEnv(gym.Env):
             "Env Action": action
         }
 
-
-        if action == 'S': # Sell
-            reward = self._sell(agent_instance)
-            if step_type == 'testing':
-                self.agent_sequence.remove(agent_name)
-
-        elif action == 'H': # Hold
-            reward = self._hold(agent_instance)
-            if step_type == 'testing':
-                self.agent_sequence.remove(agent_name)
-                
-        elif action == "B": # Buy
-            reward = self._buy(agent_instance)
-            if step_type == 'testing':
-                self.agent_sequence.remove(agent_name)
+        # Perform action based on action type
+        if action in self.action_functions:
+            self.action_functions[action](agent_instance)
+        else:
+            # Handle unexpected actions here
+            reward = None
 
         self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)        
         
-        if  ((not self.agent_sequence and step_type == 'testing') or (step_type == 'training')):
+        # Completed Step
+        if  ((not self.agent_sequence and step_type == 'testing') or (step_type == 'training') or ((step_type == 'validating'))):
 
             step_data.update({'New Portfolio Value': self.total_portfolio_value,
                             'New Cash': self.cash_in_hand,
@@ -153,10 +150,13 @@ class ContinuousOHLCVEnv(gym.Env):
                             'New Stock Holdings': self.stock_holding,
                             "New Commission Cost": self.last_commission_cost,
                             'Total Commission Cost': self.total_commission_cost})
+            self.step_info.append(step_data)
+            reward = self.get_reward(action, step_type, agent_instance, agent_name)
             self.current_step += 1
             self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
-            self.step_info.append(step_data)
             self.agent_sequence = list(self.agents)
+        else: # Subagent Step (no change in enviornment but reuqire to give accurate reward)
+            reward = self.get_reward(action, step_type, agent_instance, agent_name) #
         
         if self.current_step == (self.finish_idx-1):
 
@@ -168,14 +168,13 @@ class ContinuousOHLCVEnv(gym.Env):
         self.current_state = (self.ohlcv_raw_data[self.current_step], self.position)
 
         next_observation = self.get_observation()
-        
+
         done = self.current_step == self.finish_idx
          
         return next_observation, reward, done
             
     def _buy(self,agent_instance):
-        if agent_instance.get_name() == self.DECISION_AGENT:
-
+        if agent_instance.get_name() == self.DECISION_AGENT: # could be a problem for multiagent (only want decision agent to change balances)
             self.num_stocks_buy = int(np.floor(self.cash_in_hand/self.stock_price)) # Buy Maximum allowed (Current Method)
             self.last_commission_cost = self.num_stocks_buy * self.stock_price * self.commission_rate
             self.total_commission_cost += self.last_commission_cost
@@ -183,20 +182,13 @@ class ContinuousOHLCVEnv(gym.Env):
             self.stock_holding = self.num_stocks_buy
             self.position = 1
             self.available_actions = ('S','H')
-
-        return agent_instance.get_reward_function()
-    
+  
     def _hold(self,agent_instance):
-        if agent_instance.get_name() == self.DECISION_AGENT:
-
+        if agent_instance.get_name() == self.DECISION_AGENT: # could be a problem for multiagent (only want decision agent to change balances)
             self.last_commission_cost = 0
-            
-        return agent_instance.get_reward_function()
-        
-        
+                    
     def _sell(self, agent_instance):
-        if agent_instance.get_name() == self.DECISION_AGENT:
-
+        if agent_instance.get_name() == self.DECISION_AGENT: # could be a problem for multiagent (only want decision agent to change balances)
             self.num_stocks_sell = self.stock_holding # Sell all stocks (Current Mehtod)
             self.last_commission_cost = self.num_stocks_sell * self.stock_price * self.commission_rate
             self.total_commission_cost += self.last_commission_cost
@@ -205,9 +197,7 @@ class ContinuousOHLCVEnv(gym.Env):
             self.position = 0
             self.available_actions = ('H','B')
 
-        return agent_instance.get_reward_function()
-    
-    
+   
     def update_idx(self,start_idx:int,final_idx:int):
         assert start_idx < final_idx, f'invalid: start_idx: {start_idx} < final_idx {final_idx}'
         self.start_idx = start_idx
@@ -276,8 +266,6 @@ class ContinuousOHLCVEnv(gym.Env):
             return window_size
         # Non-matching
         raise ValueError("Non-matching window lengths for environmental states and stock prices")
-       
-
 
     def _update_stock_price(self, stock_price_data, window_size):
             """
@@ -296,5 +284,18 @@ class ContinuousOHLCVEnv(gym.Env):
                 return stock_price_data[0,0]
             else:
                 return stock_price_data[-1,0]
+
+    def get_reward(self, action, step_type, agent_instance, agent_name): # Included action for possible expansion of reward type based on action
+        if step_type == 'testing':
+            reward = agent_instance.get_metric()
+            self.agent_sequence.remove(agent_name)
+        elif step_type == 'training':
+            reward = agent_instance.get_reward_function()
+        elif step_type == 'validating':
+            reward = agent_instance.get_metric()
+        else:
+            # Handle unexpected step types here
+            raise ValueError(f'Improper step type: {step_type}')
+        return reward
 
         

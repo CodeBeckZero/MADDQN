@@ -55,7 +55,6 @@ def risk_reward(env, n):
     # If no trade actions occur, reward function will have division by 0
     if np.round(rewards_std,5) == 0:
          rewards_std = 1
-        
-        
+      
     
     return (rewards_mean / rewards_std) * position
