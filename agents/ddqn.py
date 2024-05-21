@@ -72,10 +72,9 @@ class DdqnAgent(BaseAgent, nn.Module):
                  num_hidden_layers: int,
                  buffer_size: int, 
                  batch_size: int,        
-                 alpha: float = 0.1,
                  gamma: float = 0.9,
                  device: str = 'cpu',
-                 opt_lr: float = 0.001,
+                 alpha: float = 0.001,
                  opt_wgt_dcy: float = 0.0,
                  dropout_rate: float = 0.25,
                  env_state_mod_func = None,
@@ -101,7 +100,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                                 activation_function = activation_function,
                                 num_hidden_layers = num_hidden_layers,
                                 dropout_rate = dropout_rate,
-                                opt_lr = opt_lr,
+                                opt_lr = alpha,
                                 opt_wgt_dcy = opt_wgt_dcy,
                                 device = self.device)
         
@@ -113,7 +112,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                                 activation_function = activation_function,
                                 num_hidden_layers = num_hidden_layers,
                                 dropout_rate = dropout_rate,
-                                opt_lr = opt_lr,
+                                opt_lr = alpha,
                                 opt_wgt_dcy = opt_wgt_dcy,
                                 device = self.device)       
 
@@ -200,6 +199,7 @@ class DdqnAgent(BaseAgent, nn.Module):
               val_end_idx:int = None,
               save_path:str = None,
               early_stop = False,
+              min_training_episodes:int = None,
               metric_func = None,
               metric_func_arg = {}, 
               stop_metric = 'val_tot_r',
@@ -248,7 +248,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         if early_stop:
                         
-            early_stopping = EarlyStopping( patience = stop_patience, verbose=True, delta=stop_delta)
+            early_stopping = EarlyStopping( patience = stop_patience, verbose=True, delta=stop_delta, min_training=min_training_episodes)
             loss_type, target =  self._setup_early_stop(stop_metric)
 
         
@@ -322,7 +322,8 @@ class DdqnAgent(BaseAgent, nn.Module):
             
                 if early_stopping.early_stop:
                     self.Q1_nn.load_state_dict(torch.load(model_save_path + '/checkpoint.pth'))
-                    print(f'\n{self.get_name()}: Early Stoppage on EPIDSODE {episode_num} -> Best QNet Loaded')
+                    model_from_ep = episode_num - early_stopping.model_save_idx
+                    print(f'\n{self.get_name()}: Early Stoppage on EP {episode_num} -> Best QNet Loaded from EP {model_from_ep}')
                     break
             else:
 
@@ -614,37 +615,56 @@ class Q_Network(nn.Module):
 
 class EarlyStopping:
     # From https://github.com/thuml/Time-Series-Library/blob/main/tutorial/TimesNet_tutorial.ipynb
-    def __init__(self, patience=7, verbose=False, delta=0):
+    def __init__(self, patience:int=7, verbose=False, delta=0, min_training:int = None):
         self.patience = patience # how many times will you tolerate for loss not being on decrease
         self.verbose = verbose  # whether to print tip info
-        self.counter = 0 # now how many times loss not on decrease
+        self.patience_counter = 0 # now how many times loss not on decrease
         self.best_score = None
         self.early_stop = False
         self.val_loss_min = np.Inf
         self.delta = delta
-
+        self.min_trn_counter = 0
+        self.min_trn = min_training
+        self.call_counter = 0  # Number of Times EarlyStopping was called
+        self.model_save_idx = None 
+        
+        if min_training is None or min_training == 0:
+            self.min_training_done = True
+        elif min_training < 0:
+            raise ValueError('Positive Integer expected for min_training')
+        else:
+            self.min_training_done = False
+        
     def __call__(self, val_loss, model, path) -> str:
-        score = -val_loss
-        if self.best_score is None:
-            self.best_score = score
-            msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-            self.save_checkpoint(val_loss, model, path)
-
-        # meaning: current score is not 'delta' better than best_score, representing that 
-        # further training may not bring remarkable improvement in loss. 
-        elif score < self.best_score + self.delta:  
-            self.counter += 1
-            msg = (f' -> EarlyStopping counter: {self.counter} out of {self.patience}')
-            # 'No Improvement' times become higher than patience --> Stop Further Training
-            if self.counter >= self.patience:
-                self.early_stop = True
-
-        else: #model's loss is still on decrease, save the now best model and go on training
-            self.best_score = score
-            msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-            self.save_checkpoint(val_loss, model, path)
+        self.call_counter +=1
+        
+        if not self.min_training_done and self.call_counter >= self.min_trn:
+            self.min_training_done = True
             
-            self.counter = 0
+        score = -val_loss
+        
+        if self.min_training_done:
+            if self.best_score is None:
+                self.best_score = score
+                msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+                self.save_checkpoint(val_loss, model, path)
+
+            # meaning: current score is not 'delta' better than best_score, representing that 
+            # further training may not bring remarkable improvement in loss. 
+            elif score < self.best_score + self.delta:  
+                self.patience_counter += 1
+                msg = (f' -> EarlyStopping counter: {self.patience_counter} out of {self.patience}')
+                # 'No Improvement' times become higher than patience --> Stop Further Training
+                if self.patience_counter >= self.patience:
+                    self.early_stop = True
+
+            else: #model's loss is still on decrease, save the now best model and go on training
+                self.best_score = score
+                msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+                self.save_checkpoint(val_loss, model, path)
+                self.patience_counter = 0
+        else:
+            msg = (f' -> Minimum training phase {self.call_counter} of {self.min_trn}')
         
         return msg
     
@@ -652,7 +672,7 @@ class EarlyStopping:
         # val_loss input to __call__ is based on a new target, requiring reset of counter
         # best_score, and early stoppage flag
         
-        self.counter = 0 
+        self.patience_counter = 0 
         self.best_score = None
         self.early_stop = False
         msg = (f' -> New Target Established {target:.2f} - Reset Early Stopping')
@@ -664,6 +684,7 @@ class EarlyStopping:
     ### used for saving the current best model
          
         torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+        self.model_save_idx = self.call_counter
         self.val_loss_min = val_loss
     
     def load_checkpoint(self, model, path):
