@@ -135,7 +135,10 @@ class DdqnAgent(BaseAgent, nn.Module):
        
     
     @torch.no_grad()  
-    def test(self, start_idx:int, end_idx:int, testing_episodes=1):
+    def test(self, start_idx:int, end_idx:int, testing_episodes=1, metric_func = None, metric_func_arg = {}):
+        
+        self.metric_func = metric_func
+        self.metric_func_arg = metric_func_arg
         
         ## Disables Dropout Layers in Q-networks
         self.Q1_nn.eval()
@@ -151,18 +154,17 @@ class DdqnAgent(BaseAgent, nn.Module):
           
             tot_reward, mean_reward, std_reward, loss = self._play_episode(0, None , None , 'testing')
             epi_data = {"Testing Episode": episode_num, 
-                        "Total Reward": tot_reward,
-                        "Mean Reward": mean_reward,
-                        "STD Reward": std_reward,
+                        "tot_r": tot_reward,
+                        "avg_r": mean_reward,
+                        "std_r": std_reward,
                         'Loss': loss}
             episodic_data.append(epi_data)
-            
-            
+                      
             print(
                 (f'\r{self.get_name()} - {self.env.get_name()}[{start_idx}:{end_idx}] ' +
-                f'- Testing Finished - EPIDSODE - {episode_num} of {testing_episodes}' +
-                f'-> Total Reward = {tot_reward:.2f}, Mean Reward = {mean_reward:.2f}' +
-                f'STD Reward = {std_reward:.2f}'), end="", flush=True)
+                f'- Testing Finished - EP - {episode_num} of {testing_episodes}' +
+                f'-> ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f}' +
+                f'σR = {std_reward:.2f}'), end="", flush=True)
         
         
         self.testing_episodic_data = episodic_data
@@ -311,7 +313,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                         stop_msg = early_stopping.new_target(target)
 
                 # Print a line with blank spaces to clear the existing content
-                sys.stdout.write('\r' + ' ' * 200)  # Assuming 200 characters wide terminal
+                sys.stdout.write('\r' + ' ' * 250)  # Assuming 250 characters wide terminal
 
                 # Print Update
                 print(
@@ -322,13 +324,12 @@ class DdqnAgent(BaseAgent, nn.Module):
             
                 if early_stopping.early_stop:
                     self.Q1_nn.load_state_dict(torch.load(model_save_path + '/checkpoint.pth'))
-                    model_from_ep = episode_num - early_stopping.model_save_idx
-                    print(f'\n{self.get_name()}: Early Stoppage on EP {episode_num} -> Best QNet Loaded from EP {model_from_ep}')
+                    print(f'\n{self.get_name()}: Early Stoppage on EP {episode_num} -> Best QNet Loaded from EP {early_stopping.model_save_idx}')
                     break
             else:
 
                 # Print a line with blank spaces to clear the existing content
-                sys.stdout.write('\r' + ' ' * 200)  # Assuming 150 characters wide terminal
+                sys.stdout.write('\r' + ' ' * 250)  # Assuming 250 characters wide terminal
 
                 # Print Update
                 print(
@@ -623,10 +624,10 @@ class EarlyStopping:
         self.early_stop = False
         self.val_loss_min = np.Inf
         self.delta = delta
-        self.min_trn_counter = 0
-        self.min_trn = min_training
+        self.min_trn = min_training # Minimum number of training epochs
         self.call_counter = 0  # Number of Times EarlyStopping was called
-        self.model_save_idx = None 
+        self.model_save_idx = None  # Training Epoch where last mode was saved
+        self.target = None # Current Value of Target Metric
         
         if min_training is None or min_training == 0:
             self.min_training_done = True
@@ -638,8 +639,10 @@ class EarlyStopping:
     def __call__(self, val_loss, model, path) -> str:
         self.call_counter +=1
         
-        if not self.min_training_done and self.call_counter >= self.min_trn:
+        if not self.min_training_done and self.call_counter == self.min_trn:
             self.min_training_done = True
+            self.save_checkpoint
+            
             
         score = -val_loss
         
@@ -671,12 +674,21 @@ class EarlyStopping:
     def new_target(self,target):
         # val_loss input to __call__ is based on a new target, requiring reset of counter
         # best_score, and early stoppage flag
-        
-        self.patience_counter = 0 
-        self.best_score = None
-        self.early_stop = False
-        msg = (f' -> New Target Established {target:.2f} - Reset Early Stopping')
-        
+        if self.min_training_done:
+            
+            if self.target is not None:
+                formatted_target = f'{self.target:.2f}'
+            else:
+                formatted_target = 'N/A'  
+
+            self.patience_counter = 0 
+            self.best_score = None
+            self.early_stop = False
+            msg = (f' -> New Target Established ({formatted_target} -> {target:.2f}) - Reset Early Stopping')
+            self.target = target
+        else:
+            msg = (f' -> Minimum training phase {self.call_counter} of {self.min_trn}')
+            
         return msg
         
 

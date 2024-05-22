@@ -135,6 +135,7 @@ class ContinuousOHLCVEnv(gym.Env):
         # Perform action based on action type
         if action in self.action_functions:
             self.action_functions[action](agent_instance)
+            self.agent_sequence.remove(agent_name)
         else:
             # Handle unexpected actions here
             reward = None
@@ -155,7 +156,7 @@ class ContinuousOHLCVEnv(gym.Env):
             self.current_step += 1
             self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
             self.agent_sequence = list(self.agents)
-        else: # Subagent Step (no change in enviornment but reuqire to give accurate reward)
+        else: # Subagent Step (no change in enviornment but reuqire to give accurate reward - reward function may depend on calculation in if..help)
             reward = self.get_reward(action, step_type, agent_instance, agent_name) #
         
         if self.current_step == (self.finish_idx-1):
@@ -288,11 +289,12 @@ class ContinuousOHLCVEnv(gym.Env):
     def get_reward(self, action, step_type, agent_instance, agent_name): # Included action for possible expansion of reward type based on action
         if step_type == 'testing':
             reward = agent_instance.get_metric()
-            self.agent_sequence.remove(agent_name)
+
         elif step_type == 'training':
             reward = agent_instance.get_reward_function()
         elif step_type == 'validating':
             reward = agent_instance.get_metric()
+
         else:
             # Handle unexpected step types here
             raise ValueError(f'Improper step type: {step_type}')
