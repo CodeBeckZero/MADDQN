@@ -163,7 +163,7 @@ class DdqnAgent(BaseAgent, nn.Module):
             print(
                 (f'\r{self.get_name()} - {self.env.get_name()}[{start_idx}:{end_idx}] ' +
                 f'- Testing Finished - EP - {episode_num} of {testing_episodes}' +
-                f'-> ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f}' +
+                f'-> ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f}, ' +
                 f'σR = {std_reward:.2f}'), end="", flush=True)
         
         
