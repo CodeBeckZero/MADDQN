@@ -108,7 +108,7 @@ class ContinuousOHLCVEnv(gym.Env):
             if agent_name not in self.agents:
                 raise ValueError(f'Invalid agent "{agent_name}"')
             
-            if step_type == "testing":
+            if step_type == "testing" or step_type == 'validating':
                 if not self.DECISION_AGENT:
                     raise ValueError('Decision Agent not assigned')
                 
@@ -138,12 +138,12 @@ class ContinuousOHLCVEnv(gym.Env):
             self.agent_sequence.remove(agent_name)
         else:
             # Handle unexpected actions here
-            reward = None
+            raise ValueError (f'Action {action} is not a valid action')
 
         self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)        
         
         # Completed Step
-        if  ((not self.agent_sequence and step_type == 'testing') or (step_type == 'training') or ((step_type == 'validating'))):
+        if  (not self.agent_sequence and (step_type == 'testing' or step_type == 'training' or (step_type == 'validating'))):
 
             step_data.update({'New Portfolio Value': self.total_portfolio_value,
                             'New Cash': self.cash_in_hand,

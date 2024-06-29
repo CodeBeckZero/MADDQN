@@ -8,7 +8,8 @@ import random
 from agents.baseagent import BaseAgent
 import os
 import sys
-import pandas as pd                  
+import pandas as pd
+from decimal import Decimal                  
 
 
 
@@ -123,8 +124,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.alpha = alpha        ## learning rate
         self.gamma = gamma        ## Discount factor for future rewards
         self.state = None
-        
-        
+                
         # Dictionary to translate actions between NN and Env
         self._act_nn_to_env = {0: 'S', 1: 'H', 2 :'B'}
         self._act_env_to_nn = {'S': 0,'H': 1, 'B': 2 }
@@ -144,7 +144,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.Q1_nn.eval()
         self.Q2_nn.eval()
         
-        print(f'{self.get_name()}: Testing Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
+        print(f'\n{self.get_name()}: Testing Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
         episodic_data = []
 
         self.env.update_idx(start_idx,end_idx)
@@ -152,12 +152,12 @@ class DdqnAgent(BaseAgent, nn.Module):
                 
         for episode_num in range(1, testing_episodes+1):
           
-            tot_reward, mean_reward, std_reward, loss = self._play_episode(0, None , None , 'testing')
-            epi_data = {"Testing Episode": episode_num, 
+            tot_reward, mean_reward, std_reward, _, actions = self._play_episode(0, None , None , 'testing')
+            epi_data = {"tst_ep": episode_num, 
                         "tot_r": tot_reward,
                         "avg_r": mean_reward,
                         "std_r": std_reward,
-                        'Loss': loss}
+                        'tst_actions': actions}
             episodic_data.append(epi_data)
                       
             print(
@@ -168,7 +168,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         
         self.testing_episodic_data = episodic_data
-        print(f'\n{self.get_name()}: Testing Complete on {self.env.get_name()}[{start_idx}:{end_idx}]')              
+        print(f'\n{self.get_name()}: Testing Complete on {self.env.get_name()}[{start_idx}:{end_idx}]\n')              
     
     @torch.no_grad()
     def _validate(self, val_start_idx:int, val_end_idx:int):
@@ -179,7 +179,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         self.env.update_idx(val_start_idx,val_end_idx)
         
-        tot_val_metric, mean_val_metric, std_val_metric, loss = self._play_episode(0, None , None , 'validating')
+        tot_val_metric, mean_val_metric, std_val_metric, _, actions = self._play_episode(0, None , None , 'validating')
         ror = self.env.step_info[-1]['Portfolio Value'] / self.env.initial_cash ## likely to remove because of val_metric_func
         cost = self.env.step_info[-1]['Total Commission Cost'] ## likely to remove because of val_metric_func
         
@@ -188,7 +188,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.Q1_nn.train()
         self.Q2_nn.train()
         
-        return tot_val_metric, mean_val_metric, std_val_metric, loss, ror, cost
+        return tot_val_metric, mean_val_metric, std_val_metric, ror, cost, actions
         
             
     def train(self, start_idx:int, 
@@ -210,9 +210,14 @@ class DdqnAgent(BaseAgent, nn.Module):
               update_q_freq = None,
               update_tgt_freq = None):
         
+        # Metric Function connection and agrumetns
         self.metric_func = metric_func
         self.metric_func_arg = metric_func_arg
         
+        # Signifance for validiation loss
+        self.val_loss_sig = int(np.log10(stop_delta))
+        
+        # Validation Option
         self.validate = (val_start_idx is not None) and (val_end_idx is not None)
         
         if self.validate:
@@ -235,9 +240,9 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.Q2_nn.train()
 
         if self.validate:
-            print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}] -> Validation on {self.env.get_name()}[{val_start_idx}:{val_end_idx}]')
+            print(f'\n{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}] -> Validation on {self.env.get_name()}[{val_start_idx}:{val_end_idx}]')
         else:
-            print(f'{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
+            print(f'\n{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
         
         
         model_save_path = save_path + "/" + self.name
@@ -263,10 +268,10 @@ class DdqnAgent(BaseAgent, nn.Module):
                                             episode_num,
                                             training_episodes)
             
-            tot_reward, mean_reward, std_reward, loss = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
+            tot_reward, mean_reward, std_reward, loss, trn_actions = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
             # Rewards based on Validation Set
             if self.validate:
-                val_tot_reward, val_avg_reward, val_std_reward, _, ror, cost = self._validate(val_start_idx,val_end_idx)
+                val_tot_reward, val_avg_reward, val_std_reward, ror, cost, val_actions = self._validate(val_start_idx,val_end_idx)
                 # Reset Enviornment to Training Indices
                 self.env.update_idx(start_idx,end_idx)              
                 epi_data = {"trn_ep": episode_num,
@@ -276,11 +281,13 @@ class DdqnAgent(BaseAgent, nn.Module):
                             'Q1_loss': loss[0],
                             'Q2_loss': loss[1],                        
                             "epsilon": epsilon,
+                            'trn_actions': trn_actions,
                             'val_tot_r': val_tot_reward,
                             'val_avg_r': val_avg_reward,
                             'val_std_r': val_std_reward,
                             'val_ror': ror,
-                            'val_comm_cost': cost}
+                            'val_comm_cost': cost,
+                            'val_actions': val_actions}
                 
             else: 
                 epi_data = {"trn_ep": episode_num, 
@@ -289,7 +296,8 @@ class DdqnAgent(BaseAgent, nn.Module):
                             "std_r": std_reward,
                             'Q1_loss': loss[0],
                             'Q2_loss': loss[1],                        
-                            "epsilon": epsilon}
+                            "epsilon": epsilon,
+                            'trn_actions': trn_actions}
             
             episodic_data.append(epi_data)
             
@@ -301,14 +309,14 @@ class DdqnAgent(BaseAgent, nn.Module):
                     stop_msg = early_stopping(val_loss, self.Q1_nn, model_save_path)
                 
                 else:
-                    val_loss = (current_val - target)**2
+                    val_loss = np.round((current_val - target)**2,self.val_loss_sig)
                     stop_msg = early_stopping(val_loss, self.Q1_nn, model_save_path)
                     
-                    if loss_type == "Max" and current_val > target:
+                    if loss_type == "Max" and np.round(current_val,self.val_loss_sig) > np.round(target,self.val_loss_sig):
                         target = current_val
                         stop_msg = early_stopping.new_target(target)
                     
-                    elif loss_type == "Min" and current_val < target:
+                    elif loss_type == "Min" and np.round(current_val,self.val_loss_sig) < np.round(target,self.val_loss_sig):
                         target = current_val
                         stop_msg = early_stopping.new_target(target)
 
@@ -336,12 +344,21 @@ class DdqnAgent(BaseAgent, nn.Module):
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
                     f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, ' +
                     f'μR = {mean_reward:.2f} σR = {std_reward:.2f}', end="", flush=False)
-             
+        
+        # Saving Episodic Data     
         self.training_episodic_data = episodic_data
-        print(f'\n{self.get_name()}: Training finished on {self.env.get_name()}[{start_idx}:{end_idx}]')      
+        
+        # For consistent output of final trainig line
+        if not early_stopping.early_stop:
+            txt_format = '\n'
+        else:
+            txt_format = ''
+        
+        print(f'{txt_format}{self.get_name()}: Training finished on {self.env.get_name()}[{start_idx}:{end_idx}]\n')      
     
     def _play_episode(self,epsilon, update_q_freq,update_tgt_freq, step_type):
         rewards = np.array([])
+        actions = []
         self.step_info = []
         self.env.reset()
         self.replay_memory.reset()
@@ -388,8 +405,9 @@ class DdqnAgent(BaseAgent, nn.Module):
             
             total_steps += 1
             rewards = np.append(rewards, reward)
+            actions = np.append(actions, action)
             
-        return np.sum(rewards), np.mean(rewards), np.std(rewards), loss
+        return np.sum(rewards), np.mean(rewards), np.std(rewards), loss, actions
     
     def _learn(self):
         
@@ -467,7 +485,7 @@ class DdqnAgent(BaseAgent, nn.Module):
     def _best_action(self,state,step_type):
         q_values = self.Q1_nn(torch.tensor(state,dtype=torch.float32).to(self.device))
         # Q-values are only attached for Gradient calc during mini-batch training
-        if (step_type == 'testing') or (not self.replay_memory.is_full()):
+        if (step_type == 'testing') or (not self.replay_memory.is_full()) or (step_type == 'validating'):
             q_values = q_values.detach()
         # Compute the best action based on the Q-values
         avaliable_actions = [self._act_env_to_nn[act] for act in self.get_avail_actions()]
@@ -649,7 +667,7 @@ class EarlyStopping:
         if self.min_training_done:
             if self.best_score is None:
                 self.best_score = score
-                msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+                msg = (f' -> Validation loss decreased ({self.val_loss_min:.4f} --> {val_loss:.4f}).  Saving model ...')
                 self.save_checkpoint(val_loss, model, path)
 
             # meaning: current score is not 'delta' better than best_score, representing that 
@@ -663,7 +681,7 @@ class EarlyStopping:
 
             else: #model's loss is still on decrease, save the now best model and go on training
                 self.best_score = score
-                msg = (f' -> Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+                msg = (f' -> Validation loss decreased ({self.val_loss_min:.4f} --> {val_loss:.4f}).  Saving model ...')
                 self.save_checkpoint(val_loss, model, path)
                 self.patience_counter = 0
         else:
@@ -683,6 +701,7 @@ class EarlyStopping:
 
             self.patience_counter = 0 
             self.best_score = None
+            self.val_loss_min = np.Inf
             self.early_stop = False
             msg = (f' -> New Target Established ({formatted_target} -> {target:.2f}) - Reset Early Stopping')
             self.target = target
@@ -703,3 +722,5 @@ class EarlyStopping:
     ### Used for loading the saved model from the checkpoint file
         model.load_state_dict(torch.load(path))
         print('Last Checkpoint loaded')
+
+
