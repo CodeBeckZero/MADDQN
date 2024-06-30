@@ -17,21 +17,23 @@ class RandomAgent(BaseAgent):
         self.testing_episodic_data = None
         self.step_info = None
 
-    def test(self, start_idx:int, 
-              end_idx:int, 
-              testing_epsidoes=1):
+    def test(self, start_idx:int, end_idx:int, testing_episodes=1, metric_func = None, metric_func_arg = {}):
+        
+        self.metric_func = metric_func
+        self.metric_func_arg = metric_func_arg
         
         print(f'{self.get_name()}: Testing Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
         episodic_data = []
 
         self.env.update_idx(start_idx,end_idx)
-        for episode_num in range(1, testing_epsidoes+1):
+        for episode_num in range(1, testing_episodes+1):
 
-            tot_reward, mean_reward, std_reward = self._play_episode('testing')
+            tot_reward, mean_reward, std_reward, actions = self._play_episode('testing')
             epi_data = {"tst_ep": episode_num, 
                         "tot_r": tot_reward,
                         "avg_r": mean_reward,
-                        "std_r": std_reward}
+                        "std_r": std_reward,
+                        'tst_actions': actions}
             episodic_data.append(epi_data)
             
             
@@ -40,7 +42,7 @@ class RandomAgent(BaseAgent):
 
             # Print Update
             print(
-                f'\r{self.get_name()}: EP {episode_num} of {testing_epsidoes} Finished ' +
+                f'\r{self.get_name()}: EP {episode_num} of {testing_episodes} Finished ' +
                 f'-> ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f}, σR = {std_reward:.2f}', end="", flush=False)
 
         self.testing_episodic_data = episodic_data
@@ -48,6 +50,7 @@ class RandomAgent(BaseAgent):
     
     def _play_episode(self, step_type):
             rewards = np.array([])
+            actions = []
             self.step_info = []
             self.env.reset()
             is_done = False
@@ -68,8 +71,9 @@ class RandomAgent(BaseAgent):
                 
                 total_steps += 1
                 rewards = np.append(rewards, reward)
+                actions = np.append(actions, action)
                 
-            return np.sum(rewards), np.mean(rewards), np.std(rewards)
+            return np.sum(rewards), np.mean(rewards), np.std(rewards), actions
    
     def _act(self, step_type):
         
@@ -83,4 +87,10 @@ class RandomAgent(BaseAgent):
         return pd.DataFrame(self.testing_episodic_data)  # Generate a DataFrame from stored step information
     
     def get_step_data(self):
-        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information   
+        return pd.DataFrame(self.step_info)  # Generate a DataFrame from stored step information
+    
+    def get_metric(self):
+        """
+        Returns the value of the metric function
+        """
+        return self.metric_func(self.env, **self.metric_func_arg)      

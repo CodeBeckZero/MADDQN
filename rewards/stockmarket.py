@@ -28,7 +28,7 @@ def future_profit(env,n):
 
 def risk_reward(env, n):
     """
-    Calculate the risk-reward ratio based on historical price data and current position in the environment.
+    Calculate the risk-reward ratio based on Future price data and current position in the environment.
 
     Args:
     - env: Environment object containing OHLCV raw data and position information.
@@ -57,4 +57,16 @@ def risk_reward(env, n):
          rewards_std = 1
       
     
-    return (rewards_mean / rewards_std) * position
+    return (rewards_mean / rewards_std) * position * 10
+
+def zero_reward(env):
+    """
+    Returns 0 reward to agent regardless of state and action
+
+    Args:
+    - env: Environment object containing OHLCV raw data and position information.
+
+    Returns:
+    - float: Risk-reward ratio.
+    """
+    return 0

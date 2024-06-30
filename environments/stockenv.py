@@ -18,8 +18,8 @@ class ContinuousOHLCVEnv(gym.Env):
 
         # Define the observation space for OHLCV data
         num_features = ohlcv_data.shape[1]  # Assuming OHLCV columns are Open, High, Low, Close, Volume
-        feature_min = np.array([-20.0] * num_features)  # Assuming Normalization over mean of 0
-        feature_max = np.array([20.0] * num_features)  # Assuming Normalization over mean of 0
+        feature_min = np.array(-np.inf * num_features)  
+        feature_max = np.array(np.inf * num_features)  
         self.observation_space = spaces.Box(low=feature_min, high=feature_max, dtype=np.float32)
         self.action_functions = {"B": self._buy,
                                  "H": self._hold,
