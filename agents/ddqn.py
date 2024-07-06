@@ -539,8 +539,12 @@ class DdqnAgent(BaseAgent, nn.Module):
         """
         Returns the value of the metric function
         """
-        return self.metric_func(self.env, **self.metric_func_arg)   
-        
+        return self.metric_func(self.env, **self.metric_func_arg)
+       
+    @torch.no_grad()
+    def forward(self, x):
+        # Forward pass through the network
+        return self.Q1_nn.forward(x)        
 
 Experience = namedtuple('Experience', field_names=['state',
                                                    'action',
@@ -584,6 +588,9 @@ class ExperienceBuffer:
     
     def is_full(self):
         return len(self.buffer) == self.buffer.maxlen
+    
+
+        
 
 class Q_Network(nn.Module):
     def __init__(self,
