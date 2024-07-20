@@ -369,7 +369,7 @@ class DdqnAgent(BaseAgent, nn.Module):
 
         while not is_done:
             if step_type == "testing" or step_type == 'validating': # Always use best action
-                _ , action, reward, _ , end , action_type, q_vals = self._act(0, step_type)
+                state , action, reward, _ , end , action_type, q_vals = self._act(0, step_type)
             
             elif step_type == 'training':    
                 
@@ -394,7 +394,8 @@ class DdqnAgent(BaseAgent, nn.Module):
                     
 
             
-            step_data = {f'{self.name} Action': action, 
+            step_data = {f'{self.name} State': state, 
+                        f'{self.name} Action': action, 
                         f'{self.name} Action Type': action_type,
                         f'{self.name} Q_Val Sell': q_vals[0],
                         f'{self.name} Q_Val Hold': q_vals[1],

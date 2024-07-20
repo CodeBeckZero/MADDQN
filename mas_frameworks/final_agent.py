@@ -9,7 +9,7 @@ class Star_TNsubagents:
     def __init__(self, uni_data, decision_agent, sub_agents, tn_type):
         self.decision_agent = decision_agent
         self.sub_agents = sub_agents
-        self._tn_type = tn_type
+        self.tn_type = tn_type
         self.data = uni_data
         self.scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
 
@@ -44,7 +44,7 @@ class Star_TNsubagents:
         env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(columns)}
         
             
-        return raw_state, position, cur_state_idx, state_window_size,  env_state_by_col_dic
+        return env_state_by_col_dic, position, cur_state_idx, state_window_size
 
     def _gen_subagent_state(self, env, tn_type):
         """
@@ -92,9 +92,9 @@ class Star_TNsubagents:
  
     def gen_agent_state(self, env):
         # Get observation from the environment
-        env_state_by_col_dic, position, cur_state_idx, state_window_size = self._get_environment_state(env)
+        env_state_by_col_dic, position, _ , state_window_size = self._get_environment_state(env)
         # Get sub_agent state
-        sub_agent_state = self._gen_subagent_state(env,self.tn_type)
+        sub_agent_state = self._gen_subagent_state(env, self.tn_type)
 
         sub_agent_states = []
         for agent in self.sub_agents:
@@ -102,13 +102,13 @@ class Star_TNsubagents:
             sub_agent_states.append(sub_agent_state)
 
         # Normalize each column separately
-        
+        columns = env_state_by_col_dic.keys()
         for col in columns:
             env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
 
         # Extract normalized prediction and current state
         norm_predict = env_state_by_col_dic['close'][-5:].tolist()
-        norm_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in columns]
+        norm_current_state = [env_state_by_col_dic[col][state_window_size- 1] for col in columns]
 
         # Append position to the normalized current state
         norm_current_state.append(position)
