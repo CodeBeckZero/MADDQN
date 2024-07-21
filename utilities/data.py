@@ -384,35 +384,42 @@ class TimesNetProcessing:
         self.env_csv['date'] = pd.to_datetime(self.env_csv['date'])
     
 class ModifyDDQNAgentState:
-    def __init__(self, uni_data:Dict, columns:list, scaling_type:str = None, scaler_func: Callable = None):
+    def __init__(self, uni_data:Dict, columns:list, csv_import=False, csv_path:str = None, scaling_type:str = None, scaler_func = None):
         """
         Initialize the ModifyDDQNAgentState class.
 
         Args:
         - uni_data (Dict): Dictionary containing universal data.
         - columns (list): List of column names.
+        - csv_import (bool, optional): If CSV file will be used to augment enviornmental data
         - scaling_type (str, optional): Type of scaling to apply ('col' or 'rw_col').
         - scaler_func (Callable, optional): A callable that provides scaling functionality.
         
         Raises:
         - ValueError: If the scaling_type is not valid.
         """
-        
         self.columns = columns
         self.data = uni_data
         self.scaling_type = scaling_type
+        self.csv_import = csv_import
+        self.csv_path = csv_path
+        self.scaler = scaler_func
+        self.env_csv = 'N/A'
         
+        self._validate_agruments()
+
         if self.scaling_type == 'col':
-            self.scaler = []
-            for idx, col in enumerate(self.columns):
-                new_scaler = scaler_func.fit(uni_data['raw_df'][col].to_numpy().reshape(-1,1))
-                
-                self.scaler.append(copy.deepcopy(new_scaler))
-                print(f'Column: {col}, Scaler with mean {self.scaler[idx].mean_} and std {self.scaler[idx].scale_}')
+            self._initiate_total_scaler(scaler_func)
         elif self.scaling_type == 'rw_col':
             self.scaler = scaler_func
+        elif self.scaling_type == None:
+            self.scaler = None
         else:
-            raise ValueError(f'{self.scaling_type} is not a valid scaling_type arguement')            
+            raise ValueError(f'{self.scaling_type} is not a valid scaling_type arguement')
+        
+        if csv_import:
+            self.env_csv = pd.read_csv(self.csv_path)
+            self.env_csv['date'] = pd.to_datetime(self.env_csv['date'])        
 
 
     def process(self, env):
@@ -436,11 +443,20 @@ class ModifyDDQNAgentState:
         if raw_state.shape[1] != len(self.columns):
             raise ValueError('Environmental State does not share the same number columns in Universal Data Type')
 
-        # Get the index for the current state
+        # Get window size of a step
         std_cur_state_idx = raw_state.shape[0]
 
         # Create a dictionary to store environmental state by column
         env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(self.columns)}
+
+        # Custome code for a specific CSV type 
+        if self.csv_import:
+            cur_idx = env.current_step
+            model_output_date = self.data[env.name]['rw_long_raw_price'][cur_idx]['ds'].iloc[-1]
+            filtered_date = self.env_csv['date'] == model_output_date
+            desired_columns = ['1d', '2d', '3d', '4d', '5d']
+            model_output = self.env_csv.loc[filtered_date, desired_columns].values.flatten()
+            env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])        
 
         # Scalerize each column separately
         if self.scaling_type == 'rw_col':
@@ -449,80 +465,51 @@ class ModifyDDQNAgentState:
         elif self.scaling_type =='col':
             for idx, col in enumerate(self.columns):
                 env_state_by_col_dic[col] = self.scaler[idx].transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
+        elif self.scaling_type == None:
+            pass
         else:
             raise ValueError(f'{self.scaling_type} is not a valid scaling_type arguement')    
 
-        # Extract scalerized current state
+        # Extract scalerized current enviornment state
         scaler_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in self.columns]
 
         # Append position to the scalerized agent state
         scaler_current_state.append(position)
         agent_state = scaler_current_state
+        
+        if self.csv_import:
+            scaler_predict = env_state_by_col_dic['close'][-5:].tolist()
+            agent_state += scaler_predict
 
         return agent_state
 
-    
-    def csv_process(self, env):
-        """
-        Process the environment data with additional CSV-based predictions.
-
-        Args:
-        - env: Environment object.
-
-        Returns:
-        - agent_state (list): Processed agent state with predictions.
+    def _validate_agruments(self):       
+        if self.scaler is None and self.scaling_type is not None:
+            raise ValueError('Argument scaling_type specifies scaling but no function is passed')
         
-        Raises:
-        - ValueError: If the environmental state does not match expected columns.
-        """
-        # Get observation from the environment
-        raw_state, position = env.get_observation()
-        cur_idx = env.current_step
-
-        # Check if the environmental state is in the form of OHLCV data
-        if raw_state.shape[1] != len(self.columns):
-            raise ValueError('Environmental State is not in the form of OHLCV data')
-
-        # Get the index for the current state
-        std_cur_state_idx = raw_state.shape[0]
-
-        # Create a dictionary to store environmental state by column
-        env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(self.columns)}
+        if self.scaler is not None and self.scaling_type is None:
+            raise ValueError('Scaler function is passed but scaling_type is not')
         
-        # Find prediction
-        model_output_date = self.data[env.name]['rw_long_raw_price'][cur_idx]['ds'].iloc[-1]
-        filtered_date = self.env_csv['date'] == model_output_date
-        desired_columns = ['1d', '2d', '3d', '4d', '5d']
-        model_output = self.env_csv.loc[filtered_date, desired_columns].values.flatten()
-        env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])
+        if self.csv_import and self.csv_path is None:
+            raise ValueError('No file path provided for CSV import')
         
+        proper_scaling_type_args = ['col', 'rw_col', None]
+        if not(self.scaling_type in proper_scaling_type_args):
+            raise ValueError(f'Invalid Agrument: {self.scaling_type} for scaling_type')
         
-        # Scalerize each column separately
-        if self.scaling_type == 'rw_col':
-            for col in self.columns:
-                env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
-        elif self.scaling_type =='col':
-            for idx, col in enumerate(self.columns):
-                env_state_by_col_dic[col] = self.scaler[idx].transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
-        else:
-            raise ValueError(f'{self.scaling_type} is not a valid scaling_type arguement')    
-
+        if self.scaler is not None and not(hasattr(self.scaler, 'fit')):
+            raise AttributeError('scaler function does not have fit() method, use sklearn.preprocessing methods or as guide')
         
-        # Extract normalized prediction and current state
-        norm_predict = env_state_by_col_dic['close'][-5:].tolist()
-        norm_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in self.columns]
-
-        # Append position to the normalized current state
-        norm_current_state.append(position)
-
-        # Concatenate normalized current state with normalized prediction
-        agent_state = norm_current_state + norm_predict
-
-        return agent_state
-                       
-    def upload_csv(self,csv_loc):
-        self.env_csv = pd.read_csv(csv_loc)
-        self.env_csv['date'] = pd.to_datetime(self.env_csv['date'])
-   
+        if self.scaler is not None and not(hasattr(self.scaler, 'fit_transform')):
+            raise AttributeError('scaler function does not have fit_transform() method, use sklearn.preprocessing methods or as guide')
+            
+    def _initiate_total_scaler(self, scaler_func):
+        self.scaler = []
+        for col in self.columns:
+            new_scaler = scaler_func.fit(self.data['raw_df'][col].to_numpy().reshape(-1,1))             
+            self.scaler.append(copy.deepcopy(new_scaler))
+                   
+  
+  
 
         
