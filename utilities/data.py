@@ -452,7 +452,7 @@ class ModifyDDQNAgentState:
         # Custome code for a specific CSV type 
         if self.csv_import:
             cur_idx = env.current_step
-            model_output_date = self.data[env.name]['rw_long_raw_price'][cur_idx]['ds'].iloc[-1]
+            model_output_date = self.data['rw_long_raw_price'][cur_idx]['ds'].iloc[-1]
             filtered_date = self.env_csv['date'] == model_output_date
             desired_columns = ['1d', '2d', '3d', '4d', '5d']
             model_output = self.env_csv.loc[filtered_date, desired_columns].values.flatten()
