@@ -411,7 +411,7 @@ class ModifyDDQNAgentState:
         if self.scaling_type == 'col':
             self._initiate_total_scaler(scaler_func)
         elif self.scaling_type == 'rw_col':
-            self.scaler = scaler_func
+            self._initiate_rw_scaler(scaler_func)
         elif self.scaling_type == None:
             self.scaler = None
         else:
@@ -456,17 +456,24 @@ class ModifyDDQNAgentState:
             filtered_date = self.env_csv['date'] == model_output_date
             desired_columns = ['1d', '2d', '3d', '4d', '5d']
             model_output = self.env_csv.loc[filtered_date, desired_columns].values.flatten()
-            env_state_by_col_dic['close'] = np.concatenate([env_state_by_col_dic['close'], model_output])        
+ 
 
         # Scalerize each column separately
         if self.scaling_type == 'rw_col':
-            for col in self.columns:
-                env_state_by_col_dic[col] = self.scaler.fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
+            for idx, col in enumerate(self.columns):
+                env_state_by_col_dic[col] = self.scaler[idx].fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
+                if col == 'close' and self.csv_import:
+                    scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
+
         elif self.scaling_type =='col':
             for idx, col in enumerate(self.columns):
                 env_state_by_col_dic[col] = self.scaler[idx].transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
-        elif self.scaling_type == None:
+                if col == 'close' and self.csv_import:
+                    scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
+                    
+        elif self.scaling_type is None:
             pass
+        
         else:
             raise ValueError(f'{self.scaling_type} is not a valid scaling_type arguement')    
 
@@ -477,10 +484,12 @@ class ModifyDDQNAgentState:
         scaler_current_state.append(position)
         agent_state = scaler_current_state
         
-        if self.csv_import:
-            scaler_predict = env_state_by_col_dic['close'][-5:].tolist()
-            agent_state += scaler_predict
-
+        if self.csv_import and (self.scaling_type == 'rw_col' or self.scaling_type =='col'):
+            agent_state += scaler_model_output
+            
+        if self.csv_import and self.scaling_type is None:
+            agent_state += model_output.tolist()
+        
         return agent_state
 
     def _validate_agruments(self):       
@@ -507,6 +516,12 @@ class ModifyDDQNAgentState:
         self.scaler = []
         for col in self.columns:
             new_scaler = scaler_func.fit(self.data['raw_df'][col].to_numpy().reshape(-1,1))             
+            self.scaler.append(copy.deepcopy(new_scaler))
+    
+    def _initiate_rw_scaler(self, scaler_func):
+        self.scaler = []
+        for _ in self.columns:
+            new_scaler = scaler_func            
             self.scaler.append(copy.deepcopy(new_scaler))
                    
   
