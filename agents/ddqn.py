@@ -437,6 +437,8 @@ class DdqnAgent(BaseAgent, nn.Module):
             trn_Q_nn.optimizer.zero_grad()
             loss = nn.functional.smooth_l1_loss(b_Q_nn_qvals, target)
             loss.backward()
+            # Apply gradient clipping
+            torch.nn.utils.clip_grad_norm_(trn_Q_nn.parameters(), max_norm=1.0)
             trn_Q_nn.optimizer.step()
             losses.append(loss.item())
              
@@ -545,7 +547,12 @@ class DdqnAgent(BaseAgent, nn.Module):
     @torch.no_grad()
     def forward(self, x):
         # Forward pass through the network
-        return self.Q1_nn.forward(x)        
+        return self.Q1_nn.forward(x)
+    
+    def set_env_stat_modify_func(self,env_state_mod_func,env_state_mod_params:dict={}):
+        #Prepossing of Environment State before Agent digest
+        self.env_state_mod_func = env_state_mod_func
+        self.env_state_mod_params = env_state_mod_params
 
 Experience = namedtuple('Experience', field_names=['state',
                                                    'action',
