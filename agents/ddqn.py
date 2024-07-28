@@ -349,10 +349,14 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.training_episodic_data = episodic_data
         
         # For consistent output of final trainig line
-        if not early_stopping.early_stop:
-            txt_format = '\n'
+        if early_stop:
+            if not early_stopping.early_stop:
+                txt_format = '\n'
+            else:
+                txt_format = ''
         else:
-            txt_format = ''
+            txt_format = '\n'
+        
         
         print(f'{txt_format}{self.get_name()}: Training finished on {self.env.get_name()}[{start_idx}:{end_idx}]\n')      
     

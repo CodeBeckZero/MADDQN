@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy.stats import f
+from scipy.stats import f, friedmanchisquare
 from itertools import combinations
 
 
@@ -48,10 +48,12 @@ def iman_davenport_test(n_ranks_arr, confidence_level, arr_order='cols'):
         col_ordered_arr = np.transpose(n_ranks_arr) ## Transform into arrays of dataset ranks for each classifier 
     
     # Calculation of Iman-Davenport Statistic
-    chi_square = chi_square_f(col_ordered_arr) ## Calculate Chi_squared_f    
-    k = col_ordered_arr.shape[0] ## Number of groups/classifiers
-    N = col_ordered_arr.shape[1] ## Number of datasets
+    k = col_ordered_arr.shape[1] ## Number of groups/classifiers
+    N = col_ordered_arr.shape[0] ## Number of datasets
+    columns = [col_ordered_arr[:, i] for i in range(k)] 
+    chi_square, pvalue = friedmanchisquare(*columns) ## Calculate Chi_squared_f
     iman_davenport_stat = ((N-1)*chi_square)/(N*(k-1)-chi_square)
+
 
     # Calculate Critical F-Value
     dfn = k-1 ## Degrees of freedom for numerator 
@@ -61,7 +63,7 @@ def iman_davenport_test(n_ranks_arr, confidence_level, arr_order='cols'):
     # Checking Statical Significance
     reject_null_hypo = iman_davenport_stat > critical_f_value ## Significant if stat > critical_value
 
-    return iman_davenport_stat, critical_f_value, reject_null_hypo
+    return iman_davenport_stat, critical_f_value, reject_null_hypo, k, N, pvalue
 
 
 def generate_ranks(row, equal_rank_behav='mean', rank_order:str = 'max'):
@@ -156,31 +158,6 @@ def generate_rank_array_from_dataframe(df, cols_to_rank_lst, equal_rank_behav:st
 
     return rank_array
 
-def chi_square_f(n_ranks_arr):
-    """
-    ---------------------------------------------------------------------------------------------
-    Computation of Chi Sqaured value to used for calculation of Iman-Davenport Statistic
-    ----------------------------------------------------------------------------------------------
-    Parameters:
-    -----------------------------------------------------------------------------------------------
-        n_ranks_arr: (np.narray) 
-            An array of arrays structured by either classifier's rank for each dataset or by a dataset
-            with each classifier's rank.  
-    ----------------------------------------------------------------------------------------------
-    Returns:
-    ----------------------------------------------------------------------------------------------
-    chi: (float)
-        Chi Statistic 
-    ----------------------------------------------------------------------------------------------
-    """  
-    # Calculation of CHI
-    k = n_ranks_arr.shape[0] ## Number of groups/classifiers
-    N = n_ranks_arr.shape[1] ## Number of datasets or runs for each classifier/group
-    means = np.mean(n_ranks_arr,axis=1) ## Mean rank for each classifier/group
-    sum_means_sqr = np.power(means,2).sum() # Sum of means^2
-    chi = (12*N)/(k*(k+1))*(sum_means_sqr-((k*np.power(k+1,2)/4))) # Computation of CHI
-    return chi
-
 def nemenyi_test(n_ranks_arr,confidence_level, clf_names):
     """
     ---------------------------------------------------------------------------------------------
@@ -231,11 +208,11 @@ def nemenyi_test(n_ranks_arr,confidence_level, clf_names):
                   10: {'0.05': 3.164, '0.10': 2.920}}
 
     # Calculation of Critical Difference (Null Hypothesis Threshold)
-    num_of_clf = n_ranks_arr.shape[0]
+    k = n_ranks_arr.shape[0]
     alpha = str(np.round(1-confidence_level,2))
     N = n_ranks_arr.shape[1]
-    k = demsar_dic[num_of_clf][alpha]
-    crit_diff = k * np.power((num_of_clf * (num_of_clf +1))/(6*N),0.5)
+    qa = demsar_dic[k][alpha]
+    crit_diff = qa * np.power((k * (k +1))/(6*N),0.5)
 
     # Computing Mean Rank for each classifier
     means = np.mean(n_ranks_arr,axis=1)

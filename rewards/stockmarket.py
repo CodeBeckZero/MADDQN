@@ -57,7 +57,7 @@ def risk_reward(env, n):
          rewards_std = 1
       
     
-    return (rewards_mean / rewards_std) * position * 10
+    return (rewards_mean / rewards_std) * position
 
 def zero_reward(env):
     """
