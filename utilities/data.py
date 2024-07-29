@@ -384,7 +384,8 @@ class TimesNetProcessing:
         self.env_csv['date'] = pd.to_datetime(self.env_csv['date'])
     
 class ModifyDDQNAgentState:
-    def __init__(self, uni_data:Dict, columns:list, csv_import=False, csv_path:str = None, scaling_type:str = None, scaler_func = None):
+    def __init__(self, uni_data:Dict, columns:list, csv_import=False, csv_path:str = None, scaling_type:str = None, scaler_func = None,
+                 start_scale_idx:int = None, finish_scale_idx:int = None):
         """
         Initialize the ModifyDDQNAgentState class.
 
@@ -405,6 +406,8 @@ class ModifyDDQNAgentState:
         self.csv_path = csv_path
         self.scaler = scaler_func
         self.env_csv = 'N/A'
+        self.start_scale_idx = start_scale_idx
+        self.finish_scale_idx = finish_scale_idx
         
         self._validate_agruments()
 
@@ -511,12 +514,28 @@ class ModifyDDQNAgentState:
         
         if self.scaler is not None and not(hasattr(self.scaler, 'fit_transform')):
             raise AttributeError('scaler function does not have fit_transform() method, use sklearn.preprocessing methods or as guide')
-            
+        
+        if self.scaling_type == 'rw_col' and (self.start_scale_idx is not None or
+                                              self.finish_scale_idx is not None):
+            raise ValueError('Rolling window scaling cannot have starting or finishing indices defined')
+        
+        if self.scaling_type == 'col' and (self.start_scale_idx is None) != (self.finish_scale_idx is None):
+            raise ValueError('Improper starting or finishing indices defined')
+
+        if self.scaling_type == 'col' and self.start_scale_idx > self.finish_scale_idx:
+            raise ValueError('Starting index cannot be greater than finishing index')
+        
+        
     def _initiate_total_scaler(self, scaler_func):
         self.scaler = []
-        for col in self.columns:
-            new_scaler = scaler_func.fit(self.data['raw_df'][col].to_numpy().reshape(-1,1))             
-            self.scaler.append(copy.deepcopy(new_scaler))
+        if self.start_scale_idx is None and self.finish_scale_idx is None:
+            for col in self.columns:
+                new_scaler = scaler_func.fit(self.data['raw_df'][col].to_numpy().reshape(-1,1))             
+                self.scaler.append(copy.deepcopy(new_scaler))
+        else:
+            for col in self.columns:
+                new_scaler = scaler_func.fit(self.data['raw_df'][col].iloc[self.start_scale_idx:self.finish_scale_idx].to_numpy().reshape(-1,1))             
+                self.scaler.append(copy.deepcopy(new_scaler))
     
     def _initiate_rw_scaler(self, scaler_func):
         self.scaler = []

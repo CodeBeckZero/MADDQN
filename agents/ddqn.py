@@ -416,12 +416,12 @@ class DdqnAgent(BaseAgent, nn.Module):
     
     def _learn(self):
         
-        ddqn_trn_setup =[[self.Q1_nn, self.Q2_nn],
-                         [self.Q2_nn, self.Q1_nn]]
+        ddqn_trn_setup =[[self.Q1_nn, self.Q2_nn, self.Q1_tgt_nn],
+                         [self.Q2_nn, self.Q1_nn, self.Q2_tgt_nn]]
         
         losses = []
         
-        for trn_Q_nn, eval_Q_nn in ddqn_trn_setup:
+        for trn_Q_nn, eval_Q_nn, tgt_nn in ddqn_trn_setup:
               
             b_states, b_actions, b_rewards, b_done, b_new_states,  = self.replay_memory.sample(self.batch_size)
                                     
@@ -429,7 +429,7 @@ class DdqnAgent(BaseAgent, nn.Module):
             act_vals = eval_Q_nn(b_new_states).gather(1, act_selct.unsqueeze(-1)).detach()
             b_Q_nn_qvals = trn_Q_nn(b_states).to(self.device)
 
-            target = b_Q_nn_qvals.clone().to(self.device)
+            target = tgt_nn(b_states).detach() 
             
             # Ensure batch_size is moved to CPU for indexing
             b_actions = b_actions.to(self.device)
@@ -589,9 +589,9 @@ class ExperienceBuffer:
         
         # Convert lists to PyTorch tensors
         states = torch.tensor(states, dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.int8).to(self.device) 
+        actions = torch.tensor(actions, dtype=torch.int64).to(self.device) 
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.bool).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
         next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
         
         return states, actions, rewards, dones, next_states
