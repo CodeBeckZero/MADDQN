@@ -440,7 +440,7 @@ class ModifyDDQNAgentState:
         """
         
         # Get observation from the environment
-        raw_state, position = env.get_observation()
+        raw_state, position, pos_idx, purchase_price, value, prev_act = env.get_observation()
  
         # Check if the environmental state is in the form of OHLCV data
         if raw_state.shape[1] != len(self.columns):
@@ -467,12 +467,14 @@ class ModifyDDQNAgentState:
                 env_state_by_col_dic[col] = self.scaler[idx].fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
                 if col == 'close' and self.csv_import:
                     scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
+                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
 
         elif self.scaling_type =='col':
             for idx, col in enumerate(self.columns):
                 env_state_by_col_dic[col] = self.scaler[idx].transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
                 if col == 'close' and self.csv_import:
                     scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
+                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
                     
         elif self.scaling_type is None:
             pass
@@ -483,14 +485,18 @@ class ModifyDDQNAgentState:
         # Extract scalerized current enviornment state
         scaler_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in self.columns]
 
-        # Append position to the scalerized agent state
+        # Append position & Value to the scalerized agent state
         scaler_current_state.append(position)
+        scaler_current_state.append(pos_idx)
+        scaler_current_state.append(scaler_purchase_price[0])
+        scaler_current_state.append(value)
+        scaler_current_state.append(prev_act)
         agent_state = scaler_current_state
         
         if self.csv_import and (self.scaling_type == 'rw_col' or self.scaling_type =='col'):
             agent_state += scaler_model_output
             
-        if self.csv_import and self.scaling_type is None:
+        if self.csv_import and self.scaling_type is None: ## Scaled purchase price will be here.....
             agent_state += model_output.tolist()
         
         return agent_state

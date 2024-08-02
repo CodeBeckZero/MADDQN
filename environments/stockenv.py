@@ -30,12 +30,16 @@ class ContinuousOHLCVEnv(gym.Env):
         self.stock_price_data = stock_price_data
                 
         # Init Portfolio
+        self.current_state = None
         self.initial_cash = initial_cash
         self.commission_rate = commission_rate
         self.position = None
-        self.current_state = None
+        self.n_idx_position = None
+        self.purchase_price = None
+        self.value = None
+        self.previous_action = None
 
-        # Init Agent Tuple
+       # Init Agent Tuple
         self.agents = set()
         self.agent_sequence = []
         
@@ -54,7 +58,14 @@ class ContinuousOHLCVEnv(gym.Env):
         # Reset State 
         self.current_step = self.start_idx
         self.position = 0
-        self.current_state = (self.ohlcv_raw_data[self.current_step], self.position)
+        self.n_idx_position = 0 
+        self.purchase_price = 0
+        self.value = 1
+        self.previous_action = 1 # Need to address as env_to_agent state is handled in Agent...'H':1
+        
+        self.current_state = (self.ohlcv_raw_data[self.current_step], 
+                              self.position, self.n_idx_position, self.purchase_price, 
+                              self.value, self.previous_action)
 
         # Reset Portfolio
         self.cash_in_hand = self.initial_cash
@@ -117,8 +128,14 @@ class ContinuousOHLCVEnv(gym.Env):
                     raise ValueError('Invalid Sequence: All Sub-Agents need to act before Final agent')
         except ValueError as e:
             print(f'Error: {e}')
-     
-
+        
+        # Assigining Hold Action as previous action for first iteration
+        if self.current_step == self.start_idx:
+            self.previous_action = 0
+        else:
+            last_action = self.step_info[-1]['Env Action']
+            self.previous_action = agent_instance._act_env_to_nn[last_action]
+            
         step_data = {
             'Step': self.current_step - self.start_idx + 1,
             'idx': self.current_step,
@@ -166,7 +183,10 @@ class ContinuousOHLCVEnv(gym.Env):
             else:
                 self.available_actions = ('H',)       
 
-        self.current_state = (self.ohlcv_raw_data[self.current_step], self.position)
+        # Update State
+        self.value = self.total_portfolio_value / self.initial_cash
+        self.current_state = (self.ohlcv_raw_data[self.current_step], self.position, self.n_idx_position, 
+                              self.purchase_price, self.value, self.previous_action)
 
         next_observation = self.get_observation()
 
@@ -182,10 +202,14 @@ class ContinuousOHLCVEnv(gym.Env):
             self.cash_in_hand -= self.num_stocks_buy * self.stock_price + self.last_commission_cost
             self.stock_holding = self.num_stocks_buy
             self.position = 1
+            self.n_idx_position = 1
+            self.purchase_price = self.stock_price
             self.available_actions = ('S','H')
   
     def _hold(self,agent_instance):
         if agent_instance.get_name() == self.DECISION_AGENT: # could be a problem for multiagent (only want decision agent to change balances)
+            if self.position == 1:
+                self.n_idx_position += 1
             self.last_commission_cost = 0
                     
     def _sell(self, agent_instance):
@@ -196,6 +220,8 @@ class ContinuousOHLCVEnv(gym.Env):
             self.cash_in_hand += self.num_stocks_sell * self.stock_price - self.last_commission_cost
             self.stock_holding -= self.num_stocks_sell
             self.position = 0
+            self.n_idx_position = 0
+            self.purchase_price = 0
             self.available_actions = ('H','B')
 
    
