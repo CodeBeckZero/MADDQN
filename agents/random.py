@@ -16,6 +16,10 @@ class RandomAgent(BaseAgent):
 
         self.testing_episodic_data = None
         self.step_info = None
+        
+        # Dictionary to translate actions between NN and Env
+        self._act_nn_to_env = {0: 'S', 1: 'H', 2 :'B'}
+        self._act_env_to_nn = {'S': 0,'H': 1, 'B': 2 }
 
     def test(self, start_idx:int, end_idx:int, testing_episodes=1, metric_func = None, metric_func_arg = {}):
         
