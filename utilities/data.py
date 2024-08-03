@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 from neuralforecast.core import NeuralForecast
 from sklearn import preprocessing
@@ -6,6 +7,8 @@ import pandas as pd
 import copy
 import os
 from typing import Callable, Dict
+from scipy.stats import rankdata
+
 
 
     
@@ -385,7 +388,7 @@ class TimesNetProcessing:
     
 class ModifyDDQNAgentState:
     def __init__(self, uni_data:Dict, columns:list, csv_import=False, csv_path:str = None, scaling_type:str = None, scaler_func = None,
-                 start_scale_idx:int = None, finish_scale_idx:int = None):
+                 start_scale_idx:int = None, finish_scale_idx:int = None, subagent_list:list=None, device=None):
         """
         Initialize the ModifyDDQNAgentState class.
 
@@ -408,6 +411,8 @@ class ModifyDDQNAgentState:
         self.env_csv = 'N/A'
         self.start_scale_idx = start_scale_idx
         self.finish_scale_idx = finish_scale_idx
+        self.subagent_list = subagent_list
+        self.device = device
         
         self._validate_agruments()
 
@@ -499,6 +504,19 @@ class ModifyDDQNAgentState:
         if self.csv_import and self.scaling_type is None: ## Scaled purchase price will be here.....
             agent_state += model_output.tolist()
         
+        if self.subagent_list is not None:
+            subagent_outputs = []
+            for subagent in self.subagent_list:
+                q_vals_tensor = subagent.Q1_nn.forward(torch.tensor(agent_state,dtype=torch.float32).to(self.device))
+                q_vals_list = q_vals_tensor.cpu().detach().numpy().tolist()
+
+                # Get the ranks using the 'max' method
+                ranks = rankdata(q_vals_list, method='max')
+                ranks = len(q_vals_list) + 1 - ranks
+                                
+                subagent_outputs.extend(ranks)
+            agent_state.extend(subagent_outputs)
+        
         return agent_state
 
     def _validate_agruments(self):       
@@ -548,6 +566,13 @@ class ModifyDDQNAgentState:
         for _ in self.columns:
             new_scaler = scaler_func            
             self.scaler.append(copy.deepcopy(new_scaler))
+    
+    def add_subagents(self, subagent_list:list):
+        self.subagent_list = subagent_list
+    
+    def remove_subagents(self):
+        self.subagent_list = None
+        
                    
   
   
