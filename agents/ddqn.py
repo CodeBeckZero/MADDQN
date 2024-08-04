@@ -9,8 +9,9 @@ from agents.baseagent import BaseAgent
 import os
 import sys
 import pandas as pd
-from decimal import Decimal                  
-
+from decimal import Decimal
+import json
+import importlib
 
 
 class DdqnAgent(BaseAgent, nn.Module):
@@ -131,6 +132,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         # Initialize Replay Memory
         self.replay_memory = ExperienceBuffer(buffer_size, self.device)
+        self.buffer_size = buffer_size
         self.batch_size = batch_size
        
     
@@ -557,6 +559,32 @@ class DdqnAgent(BaseAgent, nn.Module):
         #Prepossing of Environment State before Agent digest
         self.env_state_mod_func = env_state_mod_func
         self.env_state_mod_params = env_state_mod_params
+    
+    def save_config(self, filenamepath):
+        agent_conifg = {
+            'name':self.name,
+            'reward_function':self.reward_function.__name__,
+            'reward_params': self.reward_params, 
+            'buffer_size':self.buffer_size,
+            'batch_size': self.batch_size,
+            'alpha': self.alpha,
+            'gamma': self.gamma}
+        
+        nn_config = {
+            'input_size': self.Q1_nn.input_size,
+            'hidden_size': self.Q1_nn.hidden_size,
+            'output_size': self.Q1_nn.output_size,
+            'num_hidden_layers': self.Q1_nn.num_hidden_layers,
+            'activation_function': self.Q1_nn.activation_function_name,
+            'device': self.Q1_nn.device,
+            'opt_wgt_dcy': self.Q1_nn.opt_wgt_dcy,
+            'dropout_rate': self.Q1_nn.dropout_rate
+        }
+        
+        config = agent_conifg | nn_config
+        
+        with open(filenamepath, 'w') as f:
+            json.dump(config, f)
 
 Experience = namedtuple('Experience', field_names=['state',
                                                    'action',
@@ -602,9 +630,77 @@ class ExperienceBuffer:
         return len(self.buffer) == self.buffer.maxlen
     
 
-        
-
 class Q_Network(nn.Module):
+    def __init__(self,
+                 input_size: int,
+                 hidden_size: int,
+                 output_size: int,
+                 activation_function,
+                 num_hidden_layers: int,   
+                 device: str = 'cpu',
+                 opt_lr: float = 0.001,
+                 opt_wgt_dcy: float = 0.0,
+                 dropout_rate: float = 0.25):
+        
+        super(Q_Network, self).__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+
+        if isinstance(activation_function, str):
+            self.activation_function_name = activation_function
+            self.activation_function = self.get_activation_function(activation_function)
+        else:
+            self.activation_function = activation_function
+            self.activation_function_name = f"{self.activation_function.__module__}.{self.activation_function.__class__.__name__}"
+        
+        self.num_hidden_layers = num_hidden_layers
+        self.device = device
+        self.opt_lr = opt_lr
+        self.opt_wgt_dcy = opt_wgt_dcy
+        self.dropout_rate = dropout_rate
+        
+        ## Q Network Layers
+        layers = []
+        
+        ## Input Layer
+        layers.append(nn.Linear(self.input_size, self.hidden_size))
+
+        ## Hidden Layers
+        for _ in range(self.num_hidden_layers):
+            layers.append(nn.Linear(self.hidden_size, self.hidden_size))
+            layers.append(self.activation_function)
+            layers.append(nn.Dropout(self.dropout_rate))
+
+        ## Output Layer
+        layers.append(nn.Linear(self.hidden_size, self.output_size))
+
+        # Apply Kaiming Normal initialization to the linear layers' weights
+        for i in range(0, len(layers), 3):
+            if isinstance(layers[i], nn.Linear):
+                nn.init.kaiming_normal_(layers[i].weight)
+                
+        ## Create Q Network
+        self.Q_nn = nn.Sequential(*layers)
+        self.Q_nn.to(torch.device(self.device))
+        
+        # Initialize Optimizer
+        self.optimizer = optim.Adam(self.Q_nn.parameters(), lr=self.opt_lr, 
+                                    weight_decay=self.opt_wgt_dcy)
+
+    def forward(self, x):
+        # Forward pass through the network
+        return self.Q_nn(x)
+    
+    @staticmethod
+    def get_activation_function(activation_function_name):
+        module_name, class_name = activation_function_name.rsplit('.', 1)
+        module = importlib.import_module(module_name)
+        activation_class = getattr(module, class_name)
+        return activation_class()        
+
+"""class Q_Network(nn.Module):
     def __init__(self,
                 input_size: int,
                 hidden_size: int,
@@ -617,21 +713,34 @@ class Q_Network(nn.Module):
                 dropout_rate: float = 0.25):
         
         super(Q_Network, self).__init__()
-    
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.activation_function = activation_function
+        self.activation_function_name = f"{self.activation_function.__module__}.{self.activation_function.__class__.__name__}"
+        if isinstance(activation_function,str):
+            self.activation_function = self.get_activation_function()
+        self.num_hidden_layers = num_hidden_layers
+        self.device = device
+        self.opt_lr = opt_lr
+        self.opt_wgt_dcy = opt_wgt_dcy
+        self.dropout_rate = dropout_rate
+        
         ## Q Network Layers
         layers = []
         
         ## Input Layer
-        layers.append(nn.Linear(input_size, hidden_size))
+        layers.append(nn.Linear(self.input_size, self.hidden_size))
 
         ## Hidden Layers
-        for _ in range(num_hidden_layers):
-            layers.append(nn.Linear(hidden_size, hidden_size))
-            layers.append(activation_function)
-            layers.append(nn.Dropout(dropout_rate))
+        for _ in range(self.num_hidden_layers):
+            layers.append(nn.Linear(self.hidden_size, self.hidden_size))
+            layers.append(self.activation_function)
+            layers.append(nn.Dropout(self.dropout_rate))
 
         ## Output Layer
-        layers.append(nn.Linear(hidden_size, output_size))
+        layers.append(nn.Linear(self.hidden_size, self.output_size))
 
 
         # Apply Glorot Normal initialization to the linear layers' weights
@@ -641,14 +750,21 @@ class Q_Network(nn.Module):
                 
         ## Create Q Network
         self.Q_nn = nn.Sequential(*layers)
-        self.Q_nn.to(torch.device(device))
+        self.Q_nn.to(torch.device(self.device))
         
         # Initialize Optimizer
-        self.optimizer = optim.Adam(self.Q_nn.parameters(), lr=opt_lr, weight_decay=opt_wgt_dcy)
+        self.optimizer = optim.Adam(self.Q_nn.parameters(), lr=self.opt_lr, 
+                                    weight_decay=self.opt_wgt_dcy)
 
     def forward(self, x):
         # Forward pass through the network
         return self.Q_nn(x)
+    
+    def get_activation_function(self):
+        module_name, class_name = self.activation_function_name.rsplit('.', 1)
+        module = importlib.import_module(module_name)
+        activation_class = getattr(module, class_name)
+        return activation_class()"""
         
 
 class EarlyStopping:

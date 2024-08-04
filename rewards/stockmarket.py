@@ -28,6 +28,15 @@ def future_profit(env,n):
         opp_cost = 0
     else:    
         reward = 0
+        # If Tomorrow's price is below today's, avoided loss need to reward
+        tomorrows_price = env.stock_price_data[env.current_step+1][-1,0]
+        current_price = env.stock_price
+        reward = ((tomorrows_price - current_price)/current_price)
+        if reward < 0:
+            reward = -reward #
+        else:
+            reward = 0
+        
         opp_cost = 0.0002*(1-position) # Assuming risk-free return of 5% / 252 trading days
     
     # Bad Behaviour Punishment Previous action Sell and next action Buy 

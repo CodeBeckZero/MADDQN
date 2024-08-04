@@ -388,7 +388,8 @@ class TimesNetProcessing:
     
 class ModifyDDQNAgentState:
     def __init__(self, uni_data:Dict, columns:list, csv_import=False, csv_path:str = None, scaling_type:str = None, scaler_func = None,
-                 start_scale_idx:int = None, finish_scale_idx:int = None, subagent_list:list=None, device=None):
+                 start_scale_idx:int = None, finish_scale_idx:int = None, subagent_list:list=None, device=None, add_noise:bool=False,
+                 add_noise_to_cols=None,noise_mean=0, noise_std=0.1):
         """
         Initialize the ModifyDDQNAgentState class.
 
@@ -413,6 +414,10 @@ class ModifyDDQNAgentState:
         self.finish_scale_idx = finish_scale_idx
         self.subagent_list = subagent_list
         self.device = device
+        self.add_noise = add_noise
+        self.add_noise_to_cols = add_noise_to_cols
+        self.noise_mean = noise_mean
+        self.noise_std = noise_std
         
         self._validate_agruments()
 
@@ -487,8 +492,19 @@ class ModifyDDQNAgentState:
         else:
             raise ValueError(f'{self.scaling_type} is not a valid scaling_type arguement')    
 
-        # Extract scalerized current enviornment state
-        scaler_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in self.columns]
+        # Extract scalerized current enviornment state and add noise
+        if self.add_noise:
+            scaler_current_state = []
+            for col in self.columns:
+                value = env_state_by_col_dic[col][std_cur_state_idx - 1]
+                if col in self.add_noise_to_cols:
+                    value = self._add_gaussian_noise(value,self.noise_mean,self.noise_std)
+                scaler_current_state.append(value)
+        else:
+            scaler_current_state = [env_state_by_col_dic[col][std_cur_state_idx - 1] for col in self.columns]
+
+        
+
 
         # Append position & Value to the scalerized agent state
         scaler_current_state.append(position)
@@ -572,6 +588,10 @@ class ModifyDDQNAgentState:
     
     def remove_subagents(self):
         self.subagent_list = None
+        
+    def _add_gaussian_noise(self, data, mean=0, std=0.1):
+        noise = np.random.normal(mean,std, data.shape)
+        return data + noise
         
                    
   
