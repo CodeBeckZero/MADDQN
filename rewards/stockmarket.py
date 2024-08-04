@@ -69,7 +69,8 @@ def risk_reward(env, n):
         rewards = (tomorrows_price - current_price) / current_price
         rewards_mean = np.mean(rewards)  # Calculate mean using NumPy's mean function
         rewards_std = np.std(rewards)  # Calculate standard deviation using NumPy's std function
-        reward = (rewards_mean / rewards_std)
+        # Risk-reward ratio calculation
+        reward = rewards_mean / rewards_std if rewards_std != 0 else 0
     else:
         reward = 0 
     
