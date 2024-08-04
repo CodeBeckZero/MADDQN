@@ -576,7 +576,6 @@ class DdqnAgent(BaseAgent, nn.Module):
             'output_size': self.Q1_nn.output_size,
             'num_hidden_layers': self.Q1_nn.num_hidden_layers,
             'activation_function': self.Q1_nn.activation_function_name,
-            'device': self.Q1_nn.device,
             'opt_wgt_dcy': self.Q1_nn.opt_wgt_dcy,
             'dropout_rate': self.Q1_nn.dropout_rate
         }
@@ -699,74 +698,7 @@ class Q_Network(nn.Module):
         module = importlib.import_module(module_name)
         activation_class = getattr(module, class_name)
         return activation_class()        
-
-"""class Q_Network(nn.Module):
-    def __init__(self,
-                input_size: int,
-                hidden_size: int,
-                output_size: int,
-                activation_function,
-                num_hidden_layers: int,   
-                device: str = 'cpu',
-                opt_lr: float = 0.001,
-                opt_wgt_dcy: float = 0.0,
-                dropout_rate: float = 0.25):
-        
-        super(Q_Network, self).__init__()
-
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.activation_function = activation_function
-        self.activation_function_name = f"{self.activation_function.__module__}.{self.activation_function.__class__.__name__}"
-        if isinstance(activation_function,str):
-            self.activation_function = self.get_activation_function()
-        self.num_hidden_layers = num_hidden_layers
-        self.device = device
-        self.opt_lr = opt_lr
-        self.opt_wgt_dcy = opt_wgt_dcy
-        self.dropout_rate = dropout_rate
-        
-        ## Q Network Layers
-        layers = []
-        
-        ## Input Layer
-        layers.append(nn.Linear(self.input_size, self.hidden_size))
-
-        ## Hidden Layers
-        for _ in range(self.num_hidden_layers):
-            layers.append(nn.Linear(self.hidden_size, self.hidden_size))
-            layers.append(self.activation_function)
-            layers.append(nn.Dropout(self.dropout_rate))
-
-        ## Output Layer
-        layers.append(nn.Linear(self.hidden_size, self.output_size))
-
-
-        # Apply Glorot Normal initialization to the linear layers' weights
-        for i in range(0, len(layers), 3):
-            if isinstance(layers[i], nn.Linear):
-                nn.init.kaiming_normal_(layers[i].weight)
-                
-        ## Create Q Network
-        self.Q_nn = nn.Sequential(*layers)
-        self.Q_nn.to(torch.device(self.device))
-        
-        # Initialize Optimizer
-        self.optimizer = optim.Adam(self.Q_nn.parameters(), lr=self.opt_lr, 
-                                    weight_decay=self.opt_wgt_dcy)
-
-    def forward(self, x):
-        # Forward pass through the network
-        return self.Q_nn(x)
-    
-    def get_activation_function(self):
-        module_name, class_name = self.activation_function_name.rsplit('.', 1)
-        module = importlib.import_module(module_name)
-        activation_class = getattr(module, class_name)
-        return activation_class()"""
-        
-
+       
 class EarlyStopping:
     # From https://github.com/thuml/Time-Series-Library/blob/main/tutorial/TimesNet_tutorial.ipynb
     def __init__(self, patience:int=7, verbose=False, delta=0, min_training:int = None):
