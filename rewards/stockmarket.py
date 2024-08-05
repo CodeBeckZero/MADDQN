@@ -1,6 +1,6 @@
 import numpy as np
 
-def future_profit(env,n):
+def future_profit(env,n, lower, upper):
     """
     Calculate the profit rate based on n futures-in-the-future stock price data and current position in the environment.
     Assumes a negative rate based on risk-free rate
@@ -26,6 +26,14 @@ def future_profit(env,n):
         current_price = env.purchase_price   
         reward = ((tomorrows_price - current_price)/current_price)
         opp_cost = 0
+
+        No_Act_punshipment = 0
+        # Long-Term Punishment for avoiding B&H
+        if env.n_idx_position > upper:
+
+            BH_punishment = -2.5*np.log(env.n_idx_position-upper)
+        else:
+            BH_punishment = 0
     else:    
         reward = 0
         # If Tomorrow's price is below today's, avoided loss need to reward
@@ -37,13 +45,26 @@ def future_profit(env,n):
         else:
             reward = 0
         
+        BH_punishment = 0
+        # # Long-Term Punishment for continuous hold
+        if env.n_idx_no_position > lower:
+            No_Act_punshipment = -2.5*np.log(env.n_idx_no_position-lower)
+        else:
+            No_Act_punshipment = 0
+        
         opp_cost = 0.0002*(1-position) # Assuming risk-free return of 5% / 252 trading days
+    
+  
+    
+    # Long-Term Punishment for avoiding B&H
+    if env.n_idx_position > upper:
+        BH_punishment = (env.n_idx_position - upper)**(3/2) 
     
     # Bad Behaviour Punishment Previous action Sell and next action Buy 
     if env.previous_action == 0 and env.step_info[-1]['Env Action'] == 'B': # Little Convoluted with numbers/leters for states depending on where in code
-        return - (2 * env.last_commission_cost / env.total_portfolio_value * 10)  
+        return - (2 * env.last_commission_cost / env.total_portfolio_value * 1000)  
     
-    return (reward - opp_cost)*100
+    return (reward - opp_cost)*100 + BH_punishment + No_Act_punshipment
 
 def risk_reward(env, n):
     """

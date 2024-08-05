@@ -35,6 +35,7 @@ class ContinuousOHLCVEnv(gym.Env):
         self.commission_rate = commission_rate
         self.position = None
         self.n_idx_position = None
+        self.n_idx_no_position = None
         self.purchase_price = None
         self.value = None
         self.previous_action = None
@@ -58,14 +59,15 @@ class ContinuousOHLCVEnv(gym.Env):
         # Reset State 
         self.current_step = self.start_idx
         self.position = 0
-        self.n_idx_position = 0 
+        self.n_idx_position = 0
+        self.n_idx_no_position = 0  
         self.purchase_price = 0
         self.value = 1
         self.previous_action = 1 # Need to address as env_to_agent state is handled in Agent...'H':1
         
         self.current_state = (self.ohlcv_raw_data[self.current_step], 
                               self.position, self.n_idx_position, self.purchase_price, 
-                              self.value, self.previous_action)
+                              self.value, self.previous_action,self.n_idx_no_position)
 
         # Reset Portfolio
         self.cash_in_hand = self.initial_cash
@@ -186,7 +188,7 @@ class ContinuousOHLCVEnv(gym.Env):
         # Update State
         self.value = self.total_portfolio_value / self.initial_cash
         self.current_state = (self.ohlcv_raw_data[self.current_step], self.position, self.n_idx_position, 
-                              self.purchase_price, self.value, self.previous_action)
+                              self.purchase_price, self.value, self.previous_action, self.n_idx_no_position)
 
         next_observation = self.get_observation()
 
@@ -203,6 +205,7 @@ class ContinuousOHLCVEnv(gym.Env):
             self.stock_holding = self.num_stocks_buy
             self.position = 1
             self.n_idx_position = 1
+            self.n_idx_no_position = 0 
             self.purchase_price = self.stock_price
             self.available_actions = ('S','H')
   
@@ -210,6 +213,8 @@ class ContinuousOHLCVEnv(gym.Env):
         if agent_instance.get_name() == self.DECISION_AGENT: # could be a problem for multiagent (only want decision agent to change balances)
             if self.position == 1:
                 self.n_idx_position += 1
+            elif self.position == 0:
+                self.n_idx_no_position += 1
             self.last_commission_cost = 0
                     
     def _sell(self, agent_instance):
