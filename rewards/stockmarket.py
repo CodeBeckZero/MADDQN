@@ -54,48 +54,55 @@ def future_profit(env,n, lower, upper):
         
         opp_cost = 0.0002*(1-position) # Assuming risk-free return of 5% / 252 trading days
     
-  
-    
-    # Long-Term Punishment for avoiding B&H
-    if env.n_idx_position > upper:
-        BH_punishment = (env.n_idx_position - upper)**(3/2) 
-    
+
     # Bad Behaviour Punishment Previous action Sell and next action Buy 
     if env.previous_action == 0 and env.step_info[-1]['Env Action'] == 'B': # Little Convoluted with numbers/leters for states depending on where in code
         return - (2 * env.last_commission_cost / env.total_portfolio_value * 1000)  
     
     return (reward - opp_cost)*100 + BH_punishment + No_Act_punshipment
 
-def risk_reward(env, n):
+def risk_reward(env, n, lower, upper):
     """
-    Calculate the risk-reward ratio based on Future price data and current position in the environment.
+    Calculate the risk-reward ratio based on future price data and current position in the environment.
 
     Args:
     - env: Environment object containing OHLCV raw data and position information.
-    - n : Number of days in the fucutre to consider
+    - n: Number of days in the future to consider.
+    - lower: Lower threshold for no action punishment.
+    - upper: Upper threshold for B&H punishment.
 
     Returns:
     - float: Risk-reward ratio.
     """
     position = env.position
 
-    
     # Check if there are enough elements for the future prices
     if len(env.ohlcv_raw_data) < env.current_step + n:
         raise ValueError("Not enough OHLCV data for the future prices")
     
-    if position == 1: #If position, then self.purchase_price != 0 
+    if position == 1:  # If position, then self.purchase_price != 0 
         current_price = env.purchase_price
-        tomorrows_price = env.stock_price_data[env.current_step:env.current_step+n][-1,0]    
-        rewards = (tomorrows_price - current_price) / current_price
-        rewards_mean = np.mean(rewards)  # Calculate mean using NumPy's mean function
-        rewards_std = np.std(rewards)  # Calculate standard deviation using NumPy's std function
+        future_prices = env.stock_price_data[env.current_step:env.current_step+n][-1,0]
+        rewards = (future_prices - current_price) / current_price
+        
+        rewards_mean = np.mean(rewards)
+        rewards_std = np.std(rewards)
+        
         # Risk-reward ratio calculation
         reward = rewards_mean / rewards_std if rewards_std != 0 else 0
-    else:
-        reward = 0 
+        
+        # Long-Term Punishment for avoiding B&H
+        BH_punishment = -2.5 * np.log(env.n_idx_position - upper) if env.n_idx_position > upper else 0
+        No_Act_punishment = 0  # No action punishment not applicable when in position
     
-    return reward
+    else:
+        reward = 0
+        BH_punishment = 0
+        
+        # Long-Term Punishment for continuous hold
+        No_Act_punishment = -2.5 * np.log(env.n_idx_no_position - lower) if env.n_idx_no_position > lower else 0
+    
+    return reward + BH_punishment + No_Act_punishment
 
 def zero_reward(env):
     """

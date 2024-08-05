@@ -88,13 +88,24 @@ def agent_stock_performance(stock_price_ts: np.ndarray, trade_ts: np.ndarray,
             
             returns_list.append(trade_return)
         
-
-
         returns = pd.Series(returns_list)
-        sharpe_ratio = qs.stats.sharpe(returns)
+        avg_trade_ror = (returns+1).mean()
         mdd = qs.stats.max_drawdown(returns)*100
-        cumulative_return = returns.add(1).prod()
-        sortino_ratio = qs.stats.sortino(returns)
+        cumulative_ror= returns.add(1).prod()       
+        
+        if len(buy_price_idx) == 1:
+            sharpe_ratio = 0
+            if returns[0] == 0.04:
+               sortino_ratio = 0
+            elif returns[0] < 0.04:
+               sortino_ratio = -1
+            else:
+                sortino_ratio = np.inf
+            sharpe_ratio = 0
+        else:
+            sortino_ratio = qs.stats.sortino(returns)
+            sharpe_ratio = qs.stats.sharpe(returns)
+            
 
         bad_values = [np.inf]
 
@@ -119,9 +130,10 @@ def agent_stock_performance(stock_price_ts: np.ndarray, trade_ts: np.ndarray,
         trade_length_min = 0
         trade_length_avg = 0   
         trade_length_max = 0
+        avg_trade_ror = 0
         mdd = 0
         sharpe_ratio = 0
-        cumulative_return = 0
+        cumulative_ror = 0
         sortino_ratio = 0 
 
     # Buy and Hold
@@ -133,13 +145,14 @@ def agent_stock_performance(stock_price_ts: np.ndarray, trade_ts: np.ndarray,
             "n_wins": trade_wins, 
             "n_losses": trade_loss, 
             "win_percentage":win_precentage, 
-            "cumulative_return":cumulative_return,
+            "cumulative_ror":cumulative_ror,
             "sortino": sortino_ratio,
             'max_drawdown': mdd,
             'sharpe': sharpe_ratio,
             'trade_dur_avg': trade_length_avg,
             'trade_dur_min': trade_length_min,
             'trade_dur_max': trade_length_max,
+            'avg_trade_ror': avg_trade_ror,
             'buy_hold': bh_return}
 
 
@@ -183,17 +196,17 @@ def agent_stock_performance(stock_price_ts: np.ndarray, trade_ts: np.ndarray,
         plotbox_y = np.min(stock_price_ts)
         
     texbox_content = (f"Trades\n"
-        f'(# : W : L : W%):\n'
-        f'{trade_total} : {trade_wins} : {trade_loss} : {win_precentage:.1f}\n '
+        f'(# : W : L : W% : AvgRoR):\n'
+        f'{trade_total} : {trade_wins} : {trade_loss} : {win_precentage:.1f} : {avg_trade_ror:.2f}\n'
         f'\nTrade Duration\n'
         f'(min : avg : max):\n'
         f'{trade_length_min:.2f} : {trade_length_avg:.2f} : {trade_length_max:.2f}\n'           
         
         f'\nFinancials\n'
-        f'(CR : SP : SOR : MDD%):\n'
-        f'{cumulative_return:.2f} : {sharpe_ratio:.2f} : {sortino_ratio:.2f} : {mdd:.1f}\n'
+        f'(ROR : SP : SOR : MDD%):\n'
+        f'{cumulative_ror:.2f} : {sharpe_ratio:.2f} : {sortino_ratio:.2f} : {mdd:.1f}\n'
         
-        f'\nB&H: {bh_return:.2f}'                
+        f'\nB&H: {bh_return:.2f}'                 
     )
     ax.text(plotbox_x,
             plotbox_y,
