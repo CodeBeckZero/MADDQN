@@ -450,7 +450,7 @@ class ModifyDDQNAgentState:
         """
         
         # Get observation from the environment
-        raw_state, position, pos_idx, purchase_price, value, prev_act, no_pos_idx = env.get_observation()
+        raw_state, position, pos_idx, purchase_price, portfilo_value, prev_act, no_pos_idx = env.get_observation()
  
         # Check if the environmental state is in the form of OHLCV data
         if raw_state.shape[1] != len(self.columns):
@@ -511,7 +511,7 @@ class ModifyDDQNAgentState:
         scaler_current_state.append(pos_idx)
         scaler_current_state.append(no_pos_idx)
         scaler_current_state.append(scaler_purchase_price[0])
-        scaler_current_state.append(value)
+        scaler_current_state.append(portfilo_value)
         scaler_current_state.append(prev_act)
         agent_state = scaler_current_state
         
