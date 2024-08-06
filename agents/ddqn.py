@@ -73,9 +73,9 @@ class DdqnAgent(BaseAgent, nn.Module):
                  activation_function,
                  num_hidden_layers: int,
                  buffer_size: int, 
-                 batch_size: int,        
+                 batch_size: int,
+                 device,        
                  gamma: float = 0.9,
-                 device: str = 'cpu',
                  alpha: float = 0.001,
                  opt_wgt_dcy: float = 0.0,
                  dropout_rate: float = 0.25,
@@ -93,7 +93,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.env_state_mod_params = env_state_mod_params
         
         # Device to Compute Tensors
-        self.device = device
+        self.device = torch.device(device)
         
         # Initialize Q Network
         self.Q1_nn = Q_Network(input_size = input_size,
@@ -134,6 +134,8 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.replay_memory = ExperienceBuffer(buffer_size, self.device)
         self.buffer_size = buffer_size
         self.batch_size = batch_size
+        
+        print(f'{self.get_name()} initialized on {self.device}')
        
     
     @torch.no_grad()  
@@ -592,7 +594,7 @@ Experience = namedtuple('Experience', field_names=['state',
                                                    'new_state'])
            
 class ExperienceBuffer:
-    def __init__(self,capacity: int, device: str) -> None:
+    def __init__(self,capacity: int, device) -> None:
         self.buffer = deque(maxlen=capacity)
         self.capacity = capacity
         self.device = device
@@ -636,7 +638,7 @@ class Q_Network(nn.Module):
                  output_size: int,
                  activation_function,
                  num_hidden_layers: int,   
-                 device: str = 'cpu',
+                 device,
                  opt_lr: float = 0.001,
                  opt_wgt_dcy: float = 0.0,
                  dropout_rate: float = 0.25):
@@ -682,13 +684,17 @@ class Q_Network(nn.Module):
                 
         ## Create Q Network
         self.Q_nn = nn.Sequential(*layers)
+        
         self.Q_nn.to(torch.device(self.device))
         
         # Initialize Optimizer
         self.optimizer = optim.Adam(self.Q_nn.parameters(), lr=self.opt_lr, 
                                     weight_decay=self.opt_wgt_dcy)
 
+ 
     def forward(self, x):
+        # Ensure the input is moved to the correct device
+        x = x.to(torch.device(self.device))
         # Forward pass through the network
         return self.Q_nn(x)
     
