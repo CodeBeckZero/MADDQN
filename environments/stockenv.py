@@ -61,7 +61,7 @@ class ContinuousOHLCVEnv(gym.Env):
         self.position = 0
         self.n_idx_position = 0
         self.n_idx_no_position = 0  
-        self.purchase_price = 0
+        self.purchase_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
         self.value = 1
         self.previous_action = 1 # Need to address as env_to_agent state is handled in Agent...'H':1
         
@@ -175,6 +175,9 @@ class ContinuousOHLCVEnv(gym.Env):
             self.current_step += 1
             self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
             self.agent_sequence = list(self.agents)
+             # Purchase price is passed to state and potentially nomarlized/scaled, setting to 0 caused large numbers in agents NN
+            if self.position == 0:
+                self.purchase_price = self.stock_price_data
         else: # Subagent Step (no change in enviornment but reuqire to give accurate reward - reward function may depend on calculation in if..help)
             reward = self.get_reward(action, step_type, agent_instance, agent_name) #
         
@@ -226,7 +229,7 @@ class ContinuousOHLCVEnv(gym.Env):
             self.stock_holding -= self.num_stocks_sell
             self.position = 0
             self.n_idx_position = 0
-            self.purchase_price = 0
+            self.purchase_price = self.stock_price
             self.available_actions = ('H','B')
 
    
