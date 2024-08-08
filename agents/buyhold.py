@@ -9,10 +9,10 @@ class BuyHoldAgent(BaseAgent):
     """
     Buy and hold agent executes an buy and sell action at the beginning and end, respectively.    
     """
-    def __init__(self, name: str, environment, reward_function, reward_params = None, sub_agents = None):
+    def __init__(self, name: str, environment, reward_function, reward_params = None):
         
         # Call the initialization of both parent classes
-        BaseAgent.__init__(self, name, reward_function, environment, reward_params, sub_agents)
+        BaseAgent.__init__(self, name, reward_function, environment, reward_params)
 
         self.testing_episodic_data = None
         self.step_info = None

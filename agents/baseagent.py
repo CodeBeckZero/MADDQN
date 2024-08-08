@@ -5,7 +5,7 @@ class BaseAgent(ABC):
     BaseAgent abstract class defines the required interfaces and for the agent to
     interact with enviornment in the correct way. 
     """
-    def __init__(self, name, reward_function, environment, reward_params = None, sub_agents = None):
+    def __init__(self, name, reward_function, environment, reward_params = None):
         """
         Initializes the agent object.
 
@@ -22,7 +22,6 @@ class BaseAgent(ABC):
         self.name = name # Name of agent that is also used in enviornment class
         self.reward_function = reward_function # Attached reward function called by enviornment class
         self.env = environment # Environment which agent is interacting with 
-        self.sub_agents = sub_agents #TBD for MARL
         self.reward_params = reward_params # Additional Parameter for Reward Function
  
     @abstractmethod

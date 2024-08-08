@@ -28,11 +28,10 @@ class DqnAgent(BaseAgent, nn.Module):
                  opt_lr: float = 0.001,
                  opt_wgt_dcy: float = 0.0,
                  dropout_rate: float = 0.25,
-                 reward_params = None,
-                 sub_agents = None):
+                 reward_params = None):
         
         # Call the initialization of both parent classes
-        BaseAgent.__init__(self, name, reward_function, environment,reward_params,sub_agents)
+        BaseAgent.__init__(self, name, reward_function, environment,reward_params)
         nn.Module.__init__(self)
         
         # Device to Compute Tensors

@@ -14,6 +14,7 @@ import json
 import importlib
 
 
+
 class DdqnAgent(BaseAgent, nn.Module):
     """
     A Double Deep Q-Network (DDQN) reinforcement learning agent with two Q-learning networks complete
@@ -81,11 +82,10 @@ class DdqnAgent(BaseAgent, nn.Module):
                  dropout_rate: float = 0.25,
                  env_state_mod_func = None,
                  env_state_mod_params = {},
-                 reward_params = None,
-                 sub_agents = None):
+                 reward_params = None):
         
         # Call the initialization of both parent classes
-        BaseAgent.__init__(self, name, reward_function, environment, reward_params, sub_agents)
+        BaseAgent.__init__(self, name, reward_function, environment, reward_params)
         nn.Module.__init__(self)
         
         # Prepossing of Environment State before Agent digest
@@ -386,16 +386,17 @@ class DdqnAgent(BaseAgent, nn.Module):
                 exp = Experience(state, self._act_env_to_nn[action], reward,end, new_state)
                 self.replay_memory.append(exp)
                 
-                # Training Q-Network 
-                q_nn_update_bool = total_steps % update_tgt_freq == 0                    
-                if self.replay_memory.is_full() and q_nn_update_bool:
-                    loss = self._learn()
-                
                 # Update Tgt-Network
                 tgt_nn_update_bool = total_steps % update_q_freq == 0                    
                 if tgt_nn_update_bool:
                     self.Q1_tgt_nn = self._create_tgt_nn(self.Q1_nn,self.device)
                     self.Q2_tgt_nn = self._create_tgt_nn(self.Q2_nn,self.device)
+
+                # Training Q-Network 
+                q_nn_update_bool = total_steps % update_tgt_freq == 0                    
+                if self.replay_memory.is_full() and q_nn_update_bool:
+                    loss = self._learn()
+               
 
             else:
                 raise ValueError(f'Invalid step_type: {step_type}')
@@ -453,11 +454,22 @@ class DdqnAgent(BaseAgent, nn.Module):
 
         return losses       
 
-    def _create_tgt_nn(self, Q_nn, device):
+    def _create_tgt_nn(Q_nn, device):
         """
-        Create a deep copy of the Q_nn for the target network.
+        Create a deep copy of the Q_nn model and move it to the specified device.
+        
+        Args:
+            Q_nn (torch.nn.Module): The original neural network model.
+            device (torch.device): The device to which the copied model will be moved.
+
+        Returns:
+            torch.nn.Module: The copied model moved to the specified device.
         """
-        # Serialize the original model's state
+        # Ensure the device is valid
+        if not isinstance(device, torch.device):
+            raise ValueError("The 'device' argument must be an instance of torch.device.")
+        
+        # Create a deep copy of the model
         target_network = copy.deepcopy(Q_nn)
         
         # Move the copied model to the specified device
@@ -618,7 +630,7 @@ class ExperienceBuffer:
         
         # Convert lists to PyTorch tensors
         states = torch.tensor(states, dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.int64).to(self.device) 
+        actions = torch.tensor(actions, dtype=torch.float32).to(self.device) 
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
         next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
@@ -667,6 +679,7 @@ class Q_Network(nn.Module):
         
         ## Input Layer
         layers.append(nn.Linear(self.input_size, self.hidden_size))
+        layers.append(activation_function)
 
         ## Hidden Layers
         for _ in range(self.num_hidden_layers):
@@ -684,17 +697,16 @@ class Q_Network(nn.Module):
                 
         ## Create Q Network
         self.Q_nn = nn.Sequential(*layers)
-        
-        self.Q_nn.to(torch.device(self.device))
+        self.Q_nn.to(self.device)
         
         # Initialize Optimizer
         self.optimizer = optim.Adam(self.Q_nn.parameters(), lr=self.opt_lr, 
                                     weight_decay=self.opt_wgt_dcy)
 
  
-    def forward(self, x):
+    def forward(self, x: torch.tensor):
         # Ensure the input is moved to the correct device
-        x = x.to(torch.device(self.device))
+        x = x.to(self.device)
         # Forward pass through the network
         return self.Q_nn(x)
     

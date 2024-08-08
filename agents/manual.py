@@ -4,8 +4,8 @@ from agents.baseagent import BaseAgent
 import pandas as pd
 
 class ManualAgent(BaseAgent):
-    def __init__(self,name: str, environment, reward_function,reward_params = None, sub_agents = None):
-        BaseAgent.__init__(self, name, reward_function, environment, reward_params, sub_agents)
+    def __init__(self,name: str, environment, reward_function,reward_params = None):
+        BaseAgent.__init__(self, name, reward_function, environment, reward_params)
         self.training_episodic_data = None
         self.testing_episodic_data = None
         self.step_info = None
