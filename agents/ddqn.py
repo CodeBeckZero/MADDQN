@@ -109,19 +109,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                                 device = self.device)
         
         self.Q1_tgt_nn = self._create_tgt_nn(self.Q1_nn,self.device)
-     
-        self.Q2_nn = Q_Network(input_size = input_size,
-                                hidden_size = hidden_size,
-                                output_size = output_size,
-                                activation_function = activation_function,
-                                num_hidden_layers = num_hidden_layers,
-                                dropout_rate = dropout_rate,
-                                opt_lr = alpha,
-                                opt_wgt_dcy = opt_wgt_dcy,
-                                device = self.device)       
-
-        self.Q2_tgt_nn = self._create_tgt_nn(self.Q2_nn,self.device)
-        
+            
         ## Optimizer
         self.update_q_freq = 1 ## How many steps before triggering batch training       
         self.alpha = alpha        ## learning rate
@@ -148,7 +136,6 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         ## Disables Dropout Layers in Q-networks
         self.Q1_nn.eval()
-        self.Q2_nn.eval()
         
         print(f'\n{self.get_name()}: Testing Initialized on {self.env.get_name()}[{start_idx}:{end_idx}]')
         episodic_data = []
@@ -181,7 +168,6 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         ## Disables Dropout Layers in Q-networks
         self.Q1_nn.eval()
-        self.Q2_nn.eval()
         
         self.env.update_idx(val_start_idx,val_end_idx)
         
@@ -192,8 +178,7 @@ class DdqnAgent(BaseAgent, nn.Module):
 
         ## Reenable Dropout Layers in Q-networks
         self.Q1_nn.train()
-        self.Q2_nn.train()
-        
+      
         return tot_val_metric, mean_val_metric, std_val_metric, ror, cost, actions
         
             
@@ -243,7 +228,6 @@ class DdqnAgent(BaseAgent, nn.Module):
 
         ## Enable Dropout Layers
         self.Q1_nn.train()
-        self.Q2_nn.train()
 
         if self.validate:
             print(f'\n{self.get_name()}: Training Initialized on {self.env.get_name()}[{start_idx}:{end_idx}] -> Validation on {self.env.get_name()}[{val_start_idx}:{val_end_idx}]')
@@ -284,8 +268,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                             "tot_r": tot_reward,
                             "avg_r": mean_reward,
                             "std_r": std_reward,
-                            'Q1_loss': loss[0],
-                            'Q2_loss': loss[1],                        
+                            'Q_loss': loss,                      
                             "epsilon": epsilon,
                             'trn_actions': trn_actions,
                             'val_tot_r': val_tot_reward,
@@ -300,8 +283,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                             "tot_r": tot_reward,
                             "avg_r": mean_reward,
                             "std_r": std_reward,
-                            'Q1_loss': loss[0],
-                            'Q2_loss': loss[1],                        
+                            'Q_loss': loss,
                             "epsilon": epsilon,
                             'trn_actions': trn_actions}
             
@@ -332,7 +314,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                 # Print Update
                 print(
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
-                    f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
+                    f'-> Q_Loss = {loss:.2f} | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
                     f'σR = {std_reward:.2f} | {loss_type}: {stop_metric} = {current_val:.2f}' + stop_msg, end="", flush=False)
             
             
@@ -348,7 +330,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                 # Print Update
                 print(
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
-                    f'-> ΔQ1 = {loss[0]:.2f}, ΔQ2 = {loss[1]:.2f} | ∑R = {tot_reward:.2f}, ' +
+                    f'-> ΔQ_Loss = {loss:.2f} | ∑R = {tot_reward:.2f}, ' +
                     f'μR = {mean_reward:.2f} σR = {std_reward:.2f}', end="", flush=False)
         
         # Saving Episodic Data     
@@ -389,13 +371,12 @@ class DdqnAgent(BaseAgent, nn.Module):
                 self.replay_memory.append(exp)
                 
                 # Update Tgt-Network
-                tgt_nn_update_bool = total_steps % update_q_freq == 0                    
+                tgt_nn_update_bool = total_steps % update_tgt_freq == 0                    
                 if tgt_nn_update_bool:
                     self.Q1_tgt_nn = self._create_tgt_nn(self.Q1_nn,self.device)
-                    self.Q2_tgt_nn = self._create_tgt_nn(self.Q2_nn,self.device)
 
                 # Training Q-Network 
-                q_nn_update_bool = total_steps % update_tgt_freq == 0                    
+                q_nn_update_bool = total_steps % update_q_freq == 0                    
                 if self.replay_memory.is_full() and q_nn_update_bool:
                     loss = self._learn()
                
@@ -422,47 +403,36 @@ class DdqnAgent(BaseAgent, nn.Module):
         return np.sum(rewards), np.mean(rewards), np.std(rewards), loss, actions
     
     def _learn(self):
-        # Define the DDQN training setups: Q1 and Q2 networks and their target networks
-        ddqn_trn_setup = [
-            (self.Q1_nn, self.Q2_nn, self.Q1_tgt_nn),
-            (self.Q2_nn, self.Q1_nn, self.Q2_tgt_nn)
-        ]
+        # Sample a batch from replay memory
+        b_states, b_actions, b_rewards, b_done, b_new_states = self.replay_memory.sample(self.batch_size)
         
-        losses = []
-        
-        for trn_Q_nn, eval_Q_nn, tgt_nn in ddqn_trn_setup:
-            # Sample a batch from replay memory
-            b_states, b_actions, b_rewards, b_done, b_new_states = self.replay_memory.sample(self.batch_size)
-            
-            b_states = b_states.to(self.device)
-            b_actions = b_actions.to(self.device)
-            b_rewards = b_rewards.to(self.device)
-            b_done = b_done.to(self.device)
-            b_new_states = b_new_states.to(self.device)
+        b_states = b_states.to(self.device)
+        b_actions = b_actions.to(self.device)
+        b_rewards = b_rewards.to(self.device)
+        b_done = b_done.to(self.device)
+        b_new_states = b_new_states.to(self.device)
 
-            # Compute the action selection using the main Q-network
-            with torch.no_grad():
-                selected_actions = trn_Q_nn(b_new_states).argmax(dim=1)
-                next_q_values = eval_Q_nn(b_new_states).gather(1, selected_actions.unsqueeze(-1)).squeeze(-1)
-            
-            # Compute the target Q-values
-            target_q_values = b_rewards + self.gamma * next_q_values * (1 - b_done)
-            
-            # Compute the current Q-values using the main Q-network
-            current_q_values = trn_Q_nn(b_states).gather(1, b_actions.unsqueeze(-1)).squeeze(-1)
-            
-            # Compute the loss
-            loss = nn.functional.smooth_l1_loss(current_q_values, target_q_values)
-            
-            # Optimize the network
-            trn_Q_nn.optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(trn_Q_nn.parameters(), max_norm=1.0)
-            trn_Q_nn.optimizer.step()
-            
-            losses.append(loss.item())
+        # Compute the action selection using the main Q-network
+        with torch.no_grad():
+            selected_actions = self.Q1_nn(b_new_states).argmax(dim=1)
+            next_q_values = self.Q1_tgt_nn(b_new_states).gather(1, selected_actions.unsqueeze(-1)).squeeze(-1)
         
-        return losses
+        # Compute the target Q-values
+        target_q_values = b_rewards + self.gamma * next_q_values * (1 - b_done)
+        
+        # Compute the current Q-values using the main Q-network
+        current_q_values = self.Q1_nn(b_states).gather(1, b_actions.unsqueeze(-1)).squeeze(-1)
+        
+        # Compute the loss
+        loss = nn.functional.smooth_l1_loss(current_q_values, target_q_values)
+        
+        # Optimize the network
+        self.Q1_nn.optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.Q1_nn.parameters(), max_norm=1.0)
+        self.Q1_nn.optimizer.step()
+        
+        return loss.item()
 
     def _create_tgt_nn(self, Q_nn, device):
         """
