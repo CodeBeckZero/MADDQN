@@ -62,8 +62,6 @@ class DdqnAgent(BaseAgent, nn.Module):
             Dictionary where arugments for the linked environment state modifier function can be passed
         reward_params (dic):
             Dictionary where arugments for the linked reward function can be passed
-        sub_agents (list, optional): 
-            Sub-agents for multi-agent reinforcement learning (MARL). Defaults to None.
     """
     def __init__(self, name: str, 
                  environment,
@@ -92,8 +90,12 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.env_state_mod_func = env_state_mod_func
         self.env_state_mod_params = env_state_mod_params
         
+        # Ensure the device is valid
+        if not isinstance(device, torch.device):
+            raise ValueError("The 'device' argument must be an instance of torch.device.")
+        
         # Device to Compute Tensors
-        self.device = torch.device(device)
+        self.device = device
         
         # Initialize Q Network
         self.Q1_nn = Q_Network(input_size = input_size,
@@ -420,41 +422,49 @@ class DdqnAgent(BaseAgent, nn.Module):
         return np.sum(rewards), np.mean(rewards), np.std(rewards), loss, actions
     
     def _learn(self):
-        
-        ddqn_trn_setup =[[self.Q1_nn, self.Q2_nn, self.Q1_tgt_nn],
-                         [self.Q2_nn, self.Q1_nn, self.Q2_tgt_nn]]
+        # Define the DDQN training setups: Q1 and Q2 networks and their target networks
+        ddqn_trn_setup = [
+            (self.Q1_nn, self.Q2_nn, self.Q1_tgt_nn),
+            (self.Q2_nn, self.Q1_nn, self.Q2_tgt_nn)
+        ]
         
         losses = []
         
         for trn_Q_nn, eval_Q_nn, tgt_nn in ddqn_trn_setup:
-              
-            b_states, b_actions, b_rewards, b_done, b_new_states,  = self.replay_memory.sample(self.batch_size)
-                                    
-            act_selct = trn_Q_nn(b_new_states).detach().max(1)[1]
-            act_vals = eval_Q_nn(b_new_states).gather(1, act_selct.unsqueeze(-1)).detach()
-            b_Q_nn_qvals = trn_Q_nn(b_states).to(self.device)
-
-            target = tgt_nn(b_states).detach() 
+            # Sample a batch from replay memory
+            b_states, b_actions, b_rewards, b_done, b_new_states = self.replay_memory.sample(self.batch_size)
             
-            # Ensure batch_size is moved to CPU for indexing
+            b_states = b_states.to(self.device)
             b_actions = b_actions.to(self.device)
-            
-            for i in range(self.batch_size):
-                target[i, b_actions[i]] = b_rewards[i] + self.gamma * act_vals[i] * (not b_done[i])
+            b_rewards = b_rewards.to(self.device)
+            b_done = b_done.to(self.device)
+            b_new_states = b_new_states.to(self.device)
 
-            # Loss and optimize
+            # Compute the action selection using the main Q-network
+            with torch.no_grad():
+                selected_actions = trn_Q_nn(b_new_states).argmax(dim=1)
+                next_q_values = eval_Q_nn(b_new_states).gather(1, selected_actions.unsqueeze(-1)).squeeze(-1)
+            
+            # Compute the target Q-values
+            target_q_values = b_rewards + self.gamma * next_q_values * (1 - b_done)
+            
+            # Compute the current Q-values using the main Q-network
+            current_q_values = trn_Q_nn(b_states).gather(1, b_actions.unsqueeze(-1)).squeeze(-1)
+            
+            # Compute the loss
+            loss = nn.functional.smooth_l1_loss(current_q_values, target_q_values)
+            
+            # Optimize the network
             trn_Q_nn.optimizer.zero_grad()
-            loss = nn.functional.smooth_l1_loss(b_Q_nn_qvals, target)
             loss.backward()
-            # Apply gradient clipping
             torch.nn.utils.clip_grad_norm_(trn_Q_nn.parameters(), max_norm=1.0)
             trn_Q_nn.optimizer.step()
+            
             losses.append(loss.item())
-             
+        
+        return losses
 
-        return losses       
-
-    def _create_tgt_nn(Q_nn, device):
+    def _create_tgt_nn(self, Q_nn, device):
         """
         Create a deep copy of the Q_nn model and move it to the specified device.
         
@@ -465,10 +475,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         Returns:
             torch.nn.Module: The copied model moved to the specified device.
         """
-        # Ensure the device is valid
-        if not isinstance(device, torch.device):
-            raise ValueError("The 'device' argument must be an instance of torch.device.")
-        
+       
         # Create a deep copy of the model
         target_network = copy.deepcopy(Q_nn)
         
@@ -564,7 +571,6 @@ class DdqnAgent(BaseAgent, nn.Module):
         """
         return self.metric_func(self.env, **self.metric_func_arg)
        
-    @torch.no_grad()
     def forward(self, x):
         # Forward pass through the network
         return self.Q1_nn.forward(x)
@@ -606,7 +612,7 @@ Experience = namedtuple('Experience', field_names=['state',
                                                    'new_state'])
            
 class ExperienceBuffer:
-    def __init__(self,capacity: int, device) -> None:
+    def __init__(self, capacity: int, device) -> None:
         self.buffer = deque(maxlen=capacity)
         self.capacity = capacity
         self.device = device
@@ -614,7 +620,7 @@ class ExperienceBuffer:
     def __len__(self):
         return len(self.buffer)
     
-    def append(self,experience):
+    def append(self, experience: tuple):
         self.buffer.append(experience)
     
     def sample(self, batch_size):
@@ -622,22 +628,16 @@ class ExperienceBuffer:
         sampled_experiences = [self.buffer[idx] for idx in indices]
         
         # Extract individual fields from sampled experiences
-        states = [exp.state for exp in sampled_experiences]
-        actions = [exp.action for exp in sampled_experiences]
-        rewards = [exp.reward for exp in sampled_experiences]
-        dones = [exp.is_done for exp in sampled_experiences]
-        next_states = [exp.new_state for exp in sampled_experiences]
-        
-        # Convert lists to PyTorch tensors
-        states = torch.tensor(states, dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.float32).to(self.device) 
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        states = torch.stack([torch.tensor(exp.state,dtype=torch.float32) for exp in sampled_experiences]).to(self.device)
+        actions = torch.tensor([exp.action for exp in sampled_experiences], dtype=torch.long).to(self.device)
+        rewards = torch.tensor([exp.reward for exp in sampled_experiences], dtype=torch.float32).to(self.device)
+        dones = torch.tensor([exp.is_done for exp in sampled_experiences], dtype=torch.float32).to(self.device)
+        next_states = torch.stack([torch.tensor(exp.new_state,dtype=torch.float32) for exp in sampled_experiences]).to(self.device)
         
         return states, actions, rewards, dones, next_states
+    
     def reset(self):
-        self.buffer = deque(maxlen = self.capacity)
+        self.buffer.clear()
     
     def is_full(self):
         return len(self.buffer) == self.buffer.maxlen
