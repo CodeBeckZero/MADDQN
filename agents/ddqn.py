@@ -12,6 +12,7 @@ import pandas as pd
 from decimal import Decimal
 import json
 import importlib
+import time
 
 
 
@@ -248,8 +249,7 @@ class DdqnAgent(BaseAgent, nn.Module):
             early_stopping = EarlyStopping( patience = stop_patience, verbose=True, delta=stop_delta, min_training=min_training_episodes)
             loss_type, target =  self._setup_early_stop(stop_metric)
 
-        
-                
+  
         for episode_num in range(1, training_episodes+1):
 
             
@@ -257,8 +257,10 @@ class DdqnAgent(BaseAgent, nn.Module):
                                             final_epsilon,
                                             episode_num,
                                             training_episodes)
-            
+            trn_start_time = time.time()
             tot_reward, mean_reward, std_reward, loss, trn_actions = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
+            trn_finish_time = time.time()
+            trn_time = trn_finish_time - trn_start_time
             # Rewards based on Validation Set
             if self.validate:
                 val_tot_reward, val_avg_reward, val_std_reward, ror, cost, val_actions = self._validate(val_start_idx,val_end_idx)
@@ -310,11 +312,16 @@ class DdqnAgent(BaseAgent, nn.Module):
 
                 # Print a line with blank spaces to clear the existing content
                 sys.stdout.write('\r' + ' ' * 250)  # Assuming 250 characters wide terminal
-
+                
+                if loss is not None:
+                    loss_str = f'{loss:.2f}'
+                else:
+                    loss_str = 'None'
+    
                 # Print Update
                 print(
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
-                    f'-> Q_Loss = {loss:.2f} | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
+                    f'-> Q_Loss = {loss_str} | Time = {trn_time:.3f} s | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
                     f'σR = {std_reward:.2f} | {loss_type}: {stop_metric} = {current_val:.2f}' + stop_msg, end="", flush=False)
             
             
@@ -330,7 +337,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                 # Print Update
                 print(
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
-                    f'-> ΔQ_Loss = {loss:.2f} | ∑R = {tot_reward:.2f}, ' +
+                    f'-> ΔQ_Loss = {loss:.2f} | Time = {trn_time:.3f} s | ∑R = {tot_reward:.2f}, ' +
                     f'μR = {mean_reward:.2f} σR = {std_reward:.2f}', end="", flush=False)
         
         # Saving Episodic Data     
@@ -402,6 +409,7 @@ class DdqnAgent(BaseAgent, nn.Module):
             
         return np.sum(rewards), np.mean(rewards), np.std(rewards), loss, actions
     
+   
     def _learn(self):
         # Sample a batch from replay memory
         b_states, b_actions, b_rewards, b_done, b_new_states = self.replay_memory.sample(self.batch_size)

@@ -478,14 +478,18 @@ class ModifyDDQNAgentState:
                 if col == 'close' and self.csv_import:
                     scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
                     scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
-
+                elif col == 'close' and not self.csv_import:
+                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
+        
         elif self.scaling_type =='col':
             for idx, col in enumerate(self.columns):
                 env_state_by_col_dic[col] = self.scaler[idx].transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
                 if col == 'close' and self.csv_import:
                     scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
                     scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
-                    
+                elif col == 'close' and not self.csv_import:
+                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
+
         elif self.scaling_type is None:
             pass
         
