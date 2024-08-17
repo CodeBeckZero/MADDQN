@@ -115,3 +115,28 @@ def zero_reward(env):
     - float: Risk-reward ratio.
     """
     return 0
+
+def vanilia_profit(env,n):
+    """
+    Calculate the profit rate based on n futures-in-the-future stock price data and current position in the environment.
+    Assumes a negative rate based on risk-free rate
+
+    Args:
+    - env: Environment object containing OHLCV raw data and position information.
+    - n : Number of days in the fucutre to consider
+
+    Returns:
+    - float: Profit Rate
+    """
+    position = env.position
+    
+    # Check if there are enough elements for the future prices
+    if len(env.ohlcv_raw_data) < env.current_step + n:
+        raise ValueError("Not enough OHLCV data for the future prices")
+    
+    # Tomorrow's Price
+    tomorrows_price = env.stock_price_data[env.current_step+n][-1,0]       
+    current_price = env.stock_price  
+    reward = ((tomorrows_price - current_price)/current_price)
+
+    return reward * 100 *position

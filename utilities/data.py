@@ -99,23 +99,20 @@ class UniStockEnvDataStruct():
         # Long Form DFs for Neuralforecast 
         timesnet_df = self._gen_long_form_df_from_ohlcv(clean_ohlcv_df)
         focused_timesnet_df = timesnet_df[timesnet_df['unique_id'] == env_price_col].copy().reset_index(drop=True)
+        rw_raw_df = RunningWindowDataset(clean_ohlcv_df, window_size)
+        rw_raw_env = self._df_to_env_array(raw_env_df,window_size)
+        rw_focused_timesnet_df = RunningWindowDataset(focused_timesnet_df,window_size)
+        rw_closing_price = self._df_to_env_array(clean_ohlcv_df[[env_price_col]],window_size)
         
         self.data = {'raw_df': clean_ohlcv_df,
                     'raw_env': raw_array,
                     'raw_price_env': raw_price,
                     'long_raw': timesnet_df,
-                    'long_raw_price': focused_timesnet_df}
-
-        if window_size > 1:
-            rw_raw_df = RunningWindowDataset(clean_ohlcv_df, window_size)
-            rw_raw_env = self._df_to_env_array(raw_env_df,window_size)
-            rw_focused_timesnet_df = RunningWindowDataset(focused_timesnet_df,window_size)
-            rw_closing_price = self._df_to_env_array(clean_ohlcv_df[[env_price_col]],window_size)
-
-            self.data.update({'rw_raw_df': rw_raw_df,
-                              'rw_raw_env': rw_raw_env,
-                              'rw_raw_price_env':rw_closing_price,
-                              'rw_long_raw_price': rw_focused_timesnet_df})
+                    'long_raw_price': focused_timesnet_df,
+                    'rw_raw_df': rw_raw_df,
+                    'rw_raw_env': rw_raw_env,
+                    'rw_raw_price_env':rw_closing_price,
+                    'rw_long_raw_price': rw_focused_timesnet_df}
 
     def __getitem__(self, key):
         return self.data[key]
@@ -514,7 +511,10 @@ class ModifyDDQNAgentState:
         scaler_current_state.append(position)
         scaler_current_state.append(pos_idx)
         scaler_current_state.append(no_pos_idx)
-        scaler_current_state.append(scaler_purchase_price[0])
+        if self.scaling_type == 'col' or self.scaler == 'rw_col':
+            scaler_current_state.append(scaler_purchase_price[0])
+        else:
+            scaler_current_state.append(purchase_price)
         scaler_current_state.append(portfilo_value)
         scaler_current_state.append(prev_act)
         agent_state = scaler_current_state
