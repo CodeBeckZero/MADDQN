@@ -12,10 +12,13 @@ def future_profit(env,n, lower, upper):
     Returns:
     - float: Profit Rate
     """
-    position = env.position
-    
-    
-    
+    position = env.position 
+    # Don Pushinment only works when portfolio is less than stock price 
+    # and not in position due to location of check in stockenv.py, .step()
+    # Done due to being finished because of index is after the reaward calc 
+    if env.done == True: 
+        return -100
+        
     # Check if there are enough elements for the future prices
     if len(env.ohlcv_raw_data) < env.current_step + n:
         raise ValueError("Not enough OHLCV data for the future prices")

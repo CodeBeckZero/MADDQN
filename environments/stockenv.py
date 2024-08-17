@@ -63,6 +63,7 @@ class ContinuousOHLCVEnv(gym.Env):
         self.n_idx_no_position = 0  
         self.purchase_price = self.stock_price_data[self.current_step]
         self.value = 1
+        self.done = False
         self.previous_action = 1 # Need to address as env_to_agent state is handled in Agent...'H':1
         
         # Update State
@@ -160,7 +161,10 @@ class ContinuousOHLCVEnv(gym.Env):
             # Handle unexpected actions here
             raise ValueError (f'Action {action} is not a valid action')
 
-        self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)        
+        self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)
+
+        if (self.total_portfolio_value < self.stock_price) and (int(self.position) == 0):
+            self.done = True
         
         # Completed Step
         if  (not self.agent_sequence and (step_type == 'testing' or step_type == 'training' or (step_type == 'validating'))):
@@ -184,10 +188,12 @@ class ContinuousOHLCVEnv(gym.Env):
         
         if self.current_step == (self.finish_idx-1):
 
-            if int(self.stock_holding) > 0:
+            if int(self.position) ==  1:
                 self.available_actions = ('S',)
             else:
-                self.available_actions = ('H',)       
+                self.available_actions = ('H',)
+
+
 
         # Update State
         self.value = self.total_portfolio_value / self.initial_cash
@@ -196,9 +202,10 @@ class ContinuousOHLCVEnv(gym.Env):
 
         next_observation = self.get_observation()
 
-        done = self.current_step == self.finish_idx
-         
-        return next_observation, reward, done
+        if not self.done:
+            self.done = self.current_step == self.finish_idx
+
+        return next_observation, reward, self.done
             
     def _buy(self,agent_instance):
         if agent_instance.get_name() == self.DECISION_AGENT: # could be a problem for multiagent (only want decision agent to change balances)
