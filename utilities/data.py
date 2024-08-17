@@ -95,21 +95,26 @@ class UniStockEnvDataStruct():
         raw_env_df = clean_ohlcv_df.drop(columns=['date']).copy()
         raw_array = clean_ohlcv_df[state_cols_names].copy().values
         raw_price = clean_ohlcv_df[env_price_col].copy().values
+        env_price = raw_price[window_size-1::]
+
         
         # Long Form DFs for Neuralforecast 
         timesnet_df = self._gen_long_form_df_from_ohlcv(clean_ohlcv_df)
         focused_timesnet_df = timesnet_df[timesnet_df['unique_id'] == env_price_col].copy().reset_index(drop=True)
         rw_raw_df = RunningWindowDataset(clean_ohlcv_df, window_size)
         rw_raw_env = self._df_to_env_array(raw_env_df,window_size)
+        rw_flat_env = self._gen_flat_rw(rw_raw_env)
         rw_focused_timesnet_df = RunningWindowDataset(focused_timesnet_df,window_size)
         rw_closing_price = self._df_to_env_array(clean_ohlcv_df[[env_price_col]],window_size)
         
         self.data = {'raw_df': clean_ohlcv_df,
                     'raw_env': raw_array,
                     'raw_price_env': raw_price,
+                    'env_price': env_price,
                     'long_raw': timesnet_df,
                     'long_raw_price': focused_timesnet_df,
                     'rw_raw_df': rw_raw_df,
+                    'rw_flat_env': rw_flat_env,
                     'rw_raw_env': rw_raw_env,
                     'rw_raw_price_env':rw_closing_price,
                     'rw_long_raw_price': rw_focused_timesnet_df}
@@ -259,6 +264,23 @@ class UniStockEnvDataStruct():
         
         # Return a tuple representing the range of row indices for the sliding window
         return (int(start_rw_idx), int(end_rw_idx))
+    
+    def _gen_flat_rw(self,rw_raw_env_input):
+        """
+        Generate a flat version of the running window data.
+
+        Args:
+        - rw_raw_env_input (np.ndarray): Running window data in the form of a NumPy ndarray.
+
+        Returns:
+        - np.ndarray: Flattened running window data.
+        """
+        # Extract dimensions of the running window data
+        n_rw, rw_len, n_features = rw_raw_env_input.shape
+
+        flat_rw = rw_raw_env_input.reshape(n_rw, rw_len*n_features)
+
+        return flat_rw
 
     
 
@@ -447,17 +469,22 @@ class ModifyDDQNAgentState:
         """
         
         # Get observation from the environment
-        raw_state, position, pos_idx, purchase_price, portfilo_value, prev_act, no_pos_idx = env.get_observation()
- 
+        state = env.get_observation()
+        print(f'len of columns->{len(self.columns)}')
+        print(f'state in data->{state}')
+        raw_state, position, pos_idx, purchase_price, portfilo_value, prev_act, no_pos_idx  = state[:-6], *state[-6:]
+   
         # Check if the environmental state is in the form of OHLCV data
-        if raw_state.shape[1] != len(self.columns):
-            raise ValueError('Environmental State does not share the same number columns in Universal Data Type')
+        if len(raw_state) % len(self.columns) != 0:
+            raise ValueError('Environmental State is not equally divisible by the number of columns')
 
         # Get window size of a step
-        std_cur_state_idx = raw_state.shape[0]
+        std_cur_state_idx = int(len(raw_state)/len(self.columns)) 
+        print(f'standard current state index->{std_cur_state_idx}')
 
         # Create a dictionary to store environmental state by column
-        env_state_by_col_dic = {col: raw_state[:, idx] for idx, col in enumerate(self.columns)}
+        env_state_by_col_dic = {col: raw_state[idx:std_cur_state_idx*len(self.columns)+1:len(self.columns)] for idx, col in enumerate(self.columns)}
+        print(f'test->{env_state_by_col_dic}')
 
         # Custome code for a specific CSV type 
         if self.csv_import:
