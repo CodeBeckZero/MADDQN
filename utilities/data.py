@@ -470,8 +470,6 @@ class ModifyDDQNAgentState:
         
         # Get observation from the environment
         state = env.get_observation()
-        print(f'len of columns->{len(self.columns)}')
-        print(f'state in data->{state}')
         raw_state, position, pos_idx, purchase_price, portfilo_value, prev_act, no_pos_idx  = state[:-6], *state[-6:]
    
         # Check if the environmental state is in the form of OHLCV data
@@ -480,11 +478,9 @@ class ModifyDDQNAgentState:
 
         # Get window size of a step
         std_cur_state_idx = int(len(raw_state)/len(self.columns)) 
-        print(f'standard current state index->{std_cur_state_idx}')
 
         # Create a dictionary to store environmental state by column
         env_state_by_col_dic = {col: raw_state[idx:std_cur_state_idx*len(self.columns)+1:len(self.columns)] for idx, col in enumerate(self.columns)}
-        print(f'test->{env_state_by_col_dic}')
 
         # Custome code for a specific CSV type 
         if self.csv_import:

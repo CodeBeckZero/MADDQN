@@ -22,7 +22,7 @@ def future_profit(env,n, lower, upper):
     
     # Tomorrow's Price
     if position == 1: #If position, then self.purchase_price != 0 
-        tomorrows_price = env.stock_price_data[env.current_step+n][-1,0]       
+        tomorrows_price = env.stock_price_data[env.current_step+n]    
         current_price = env.purchase_price   
         reward = ((tomorrows_price - current_price)/current_price)
         opp_cost = 0
@@ -37,7 +37,7 @@ def future_profit(env,n, lower, upper):
     else:    
         reward = 0
         # If Tomorrow's price is below today's, avoided loss need to reward
-        tomorrows_price = env.stock_price_data[env.current_step+1][-1,0]
+        tomorrows_price = env.stock_price_data[env.current_step+1]
         current_price = env.stock_price
         reward = ((tomorrows_price - current_price)/current_price)
         if reward < 0:
@@ -82,7 +82,7 @@ def risk_reward(env, n, lower, upper):
     
     if position == 1:  # If position, then self.purchase_price != 0 
         current_price = env.purchase_price
-        future_prices = env.stock_price_data[env.current_step:env.current_step+n][-1,0]
+        future_prices = env.stock_price_data[env.current_step:env.current_step+n]
         rewards = (future_prices - current_price) / current_price
         
         rewards_mean = np.mean(rewards)
@@ -135,7 +135,7 @@ def vanilia_profit(env,n):
         raise ValueError("Not enough OHLCV data for the future prices")
     
     # Tomorrow's Price
-    tomorrows_price = env.stock_price_data[env.current_step+n][-1,0]       
+    tomorrows_price = env.stock_price_data[env.current_step+n]       
     current_price = env.stock_price  
     reward = ((tomorrows_price - current_price)/current_price)
 

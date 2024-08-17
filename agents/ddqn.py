@@ -16,6 +16,7 @@ import time
 
 
 
+
 class DdqnAgent(BaseAgent, nn.Module):
     """
     A Double Deep Q-Network (DDQN) reinforcement learning agent with two Q-learning networks complete
@@ -466,7 +467,6 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         # Agent observes current enviromental state
         state = self.env.get_observation()
-        print(state)
         # Apply State Modifier Function, if defined, to current state prior to agent digest
         if self.env_state_mod_func!= None:
             state = self.env_state_mod_func(self.env, **self.env_state_mod_params)

@@ -61,20 +61,21 @@ class ContinuousOHLCVEnv(gym.Env):
         self.position = 0
         self.n_idx_position = 0
         self.n_idx_no_position = 0  
-        self.purchase_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
+        self.purchase_price = self.stock_price_data[self.current_step]
         self.value = 1
         self.previous_action = 1 # Need to address as env_to_agent state is handled in Agent...'H':1
         
-        self.current_state = (self.ohlcv_raw_data[self.current_step], 
-                              self.position, self.n_idx_position, self.purchase_price, 
-                              self.value, self.previous_action,self.n_idx_no_position)
+        # Update State
+        vars_to_state = np.array((self.position, self.n_idx_position, self.purchase_price, self.value, self.previous_action, self.n_idx_no_position))
+        self.current_state = np.concatenate((self.ohlcv_raw_data[self.current_step],vars_to_state)) 
+        
 
         # Reset Portfolio
         self.cash_in_hand = self.initial_cash
         self.last_commission_cost = 0
         self.total_commission_cost = 0
         self.stock_holding = int(0)
-        self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
+        self.stock_price = self.stock_price_data[self.current_step]
         self.total_portfolio_value = self.cash_in_hand + (self.stock_holding * self.stock_price)
 
         # Reset Logging
@@ -173,11 +174,11 @@ class ContinuousOHLCVEnv(gym.Env):
             self.step_info.append(step_data)
             reward = self.get_reward(action, step_type, agent_instance, agent_name)
             self.current_step += 1
-            self.stock_price = self._update_stock_price(self.stock_price_data[self.current_step],self.window_size)
+            self.stock_price = self.stock_price_data[self.current_step]
             self.agent_sequence = list(self.agents)
              # Purchase price is passed to state and potentially nomarlized/scaled, setting to 0 caused large numbers in agents NN
             if self.position == 0:
-                self.purchase_price = self.stock_price_data
+                self.purchase_price = self.stock_price_data[self.current_step]
         else: # Subagent Step (no change in enviornment but reuqire to give accurate reward - reward function may depend on calculation in if..help)
             reward = self.get_reward(action, step_type, agent_instance, agent_name) #
         
@@ -190,8 +191,8 @@ class ContinuousOHLCVEnv(gym.Env):
 
         # Update State
         self.value = self.total_portfolio_value / self.initial_cash
-        self.current_state = (self.ohlcv_raw_data[self.current_step], self.position, self.n_idx_position, 
-                              self.purchase_price, self.value, self.previous_action, self.n_idx_no_position)
+        vars_to_state = np.array((self.position, self.n_idx_position, self.purchase_price, self.value, self.previous_action, self.n_idx_no_position))
+        self.current_state = np.concatenate((self.ohlcv_raw_data[self.current_step],vars_to_state)) 
 
         next_observation = self.get_observation()
 
@@ -273,52 +274,14 @@ class ContinuousOHLCVEnv(gym.Env):
         env_state_input (np.array): Environmental states input data.
         stock_price_input (np.array): Stock price input data.
 
-        Returns:
-        window_size: Number of samples in the window.
+        Rasies:
+        ValueError: If the window lengths do not match.
         """
-              
+        num_env_state = env_state_input.shape[0]
+        num_stock_price = stock_price_input.shape[0]
+        if num_env_state != num_stock_price:
+            raise ValueError("Non-matching window lengths for environmental states and stock prices")      
         
-        # 1D Window
-        ## Check if environmental states and stock price inputs are 1D (either single value or 1 row)
-        env_state_1d = env_state_input.shape[1] == 1  
-        stock_price_1d = stock_price_input.shape[1] == 1 
-        ## Check if both inputs represent 1D windows
-        inputs_1d_window = env_state_1d and stock_price_1d
-        if inputs_1d_window:
-            window_size = 1  # Window size is 1 for 1D inputs
-            return window_size
-            
-        # ND Windows
-        ## Check if environmental states and stock price inputs are ND (more than 1 dimension)
-        env_state_Nd = env_state_input.shape[1] >= 2
-        stock_price_Nd = stock_price_input.shape[1] >= 2
-        ## Check if both inputs represent ND windows
-        inputs_Nd_window = env_state_Nd and stock_price_Nd
-        ## Check if the lengths of both inputs are the same
-        same_inputs_window_len = env_state_input.shape[1] == stock_price_input.shape[1]
-        if inputs_Nd_window and same_inputs_window_len:
-            window_size = env_state_input.shape[1]  ## Window size is the length of the input window
-            return window_size
-        # Non-matching
-        raise ValueError("Non-matching window lengths for environmental states and stock prices")
-
-    def _update_stock_price(self, stock_price_data, window_size):
-            """
-            Updates the stock price based on current window size. Assumes the last price of the window will be the price RL
-            enviornment will use to compute metrics as the results of trade actions
-
-            Parameters:
-            stock_price_data (np.array): stock price ordered by windows [[10,11.5,10],[12,12,32]] or [10,11.5,10,12,12,32],
-                window_size = 3 and 1 shown respectively. 
-            window_size(int): number of samples in window
-
-            Returns:
-            current_stock_price: Last stock price of window
-            """
-            if window_size == 1:
-                return stock_price_data[0,0]
-            else:
-                return stock_price_data[-1,0]
 
     def get_reward(self, action, step_type, agent_instance, agent_name): # Included action for possible expansion of reward type based on action
         if step_type == 'testing':
