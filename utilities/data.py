@@ -92,7 +92,7 @@ class UniStockEnvDataStruct():
     def __init__(self,clean_ohlcv_df,state_cols_names, env_price_col,window_size):
         
         # Raw OHLCV Data & Price Data for Stockmarket Environment
-        raw_env_df = clean_ohlcv_df.drop(columns=['date']).copy()
+        raw_env_df = clean_ohlcv_df.drop(columns=['date','price']).copy() #'price for logdiff dataset
         raw_array = clean_ohlcv_df[state_cols_names].copy().values
         raw_price = clean_ohlcv_df[env_price_col].copy().values
         env_price = raw_price[window_size-1::]
