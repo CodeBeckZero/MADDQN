@@ -92,7 +92,7 @@ class UniStockEnvDataStruct():
     def __init__(self,clean_ohlcv_df,state_cols_names, env_price_col,window_size):
         
         # Raw OHLCV Data & Price Data for Stockmarket Environment
-        raw_env_df = clean_ohlcv_df.drop(columns=['date','price']).copy() #'price for logdiff dataset
+        raw_env_df = clean_ohlcv_df.drop(columns=['date',env_price_col]).copy() #'price for logdiff dataset
         raw_array = clean_ohlcv_df[state_cols_names].copy().values
         raw_price = clean_ohlcv_df[env_price_col].copy().values
         env_price = raw_price[window_size-1::]
@@ -470,8 +470,8 @@ class ModifyDDQNAgentState:
         
         # Get observation from the environment
         state = env.get_observation()
-        raw_state, position, pos_idx, purchase_price, portfilo_value, prev_act, no_pos_idx  = state[:-6], *state[-6:]
-   
+        raw_state, position, pos_idx, portfilo_value, prev_act, no_pos_idx  = state[:-5], *state[-5:]
+    
         # Check if the environmental state is in the form of OHLCV data
         if len(raw_state) % len(self.columns) != 0:
             raise ValueError('Environmental State is not equally divisible by the number of columns')
@@ -497,19 +497,13 @@ class ModifyDDQNAgentState:
                 env_state_by_col_dic[col] = self.scaler[idx].fit_transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
                 if col == 'close' and self.csv_import:
                     scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
-                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
-                elif col == 'close' and not self.csv_import:
-                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
         
         elif self.scaling_type =='col':
             for idx, col in enumerate(self.columns):
                 env_state_by_col_dic[col] = self.scaler[idx].transform(env_state_by_col_dic[col].reshape(-1, 1)).flatten()
                 if col == 'close' and self.csv_import:
                     scaler_model_output = self.scaler[idx].transform(model_output.reshape(-1, 1)).flatten().tolist()
-                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
-                elif col == 'close' and not self.csv_import:
-                    scaler_purchase_price = self.scaler[idx].transform(np.array(purchase_price).reshape(-1, 1)).flatten().tolist()
-
+ 
         elif self.scaling_type is None:
             pass
         
@@ -534,10 +528,6 @@ class ModifyDDQNAgentState:
         scaler_current_state.append(position)
         scaler_current_state.append(pos_idx)
         scaler_current_state.append(no_pos_idx)
-        if self.scaling_type == 'col' or self.scaler == 'rw_col':
-            scaler_current_state.append(scaler_purchase_price[0])
-        else:
-            scaler_current_state.append(purchase_price)
         scaler_current_state.append(portfilo_value)
         scaler_current_state.append(prev_act)
         agent_state = scaler_current_state

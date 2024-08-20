@@ -67,7 +67,7 @@ class ContinuousOHLCVEnv(gym.Env):
         self.previous_action = 1 # Need to address as env_to_agent state is handled in Agent...'H':1
         
         # Update State
-        vars_to_state = np.array((self.position, self.n_idx_position, self.purchase_price, self.value, self.previous_action, self.n_idx_no_position))
+        vars_to_state = np.array((self.position, self.n_idx_position, self.value, self.previous_action, self.n_idx_no_position))
         self.current_state = np.concatenate((self.ohlcv_raw_data[self.current_step],vars_to_state)) 
         
 
@@ -197,7 +197,7 @@ class ContinuousOHLCVEnv(gym.Env):
 
         # Update State
         self.value = self.total_portfolio_value / self.initial_cash
-        vars_to_state = np.array((self.position, self.n_idx_position, self.purchase_price, self.value, self.previous_action, self.n_idx_no_position))
+        vars_to_state = np.array((self.position, self.n_idx_position, self.value, self.previous_action, self.n_idx_no_position))
         self.current_state = np.concatenate((self.ohlcv_raw_data[self.current_step],vars_to_state)) 
 
         next_observation = self.get_observation()

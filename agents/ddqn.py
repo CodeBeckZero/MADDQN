@@ -16,7 +16,6 @@ import time
 
 
 
-
 class DdqnAgent(BaseAgent, nn.Module):
     """
     A Double Deep Q-Network (DDQN) reinforcement learning agent with two Q-learning networks complete
@@ -147,7 +146,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                 
         for episode_num in range(1, testing_episodes+1):
           
-            tot_reward, mean_reward, std_reward, _, actions = self._play_episode(0, None , None , 'testing')
+            tot_reward, mean_reward, std_reward, _, actions, _, _ ,_ = self._play_episode(0, None , None , 'testing')
             epi_data = {"tst_ep": episode_num, 
                         "tot_r": tot_reward,
                         "avg_r": mean_reward,
@@ -173,7 +172,7 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         self.env.update_idx(val_start_idx,val_end_idx)
         
-        tot_val_metric, mean_val_metric, std_val_metric, _, actions = self._play_episode(0, None , None , 'validating')
+        tot_val_metric, mean_val_metric, std_val_metric, _, actions, _, _, _ = self._play_episode(0, None , None , 'validating')
         ror = self.env.step_info[-1]['Portfolio Value'] / self.env.initial_cash ## likely to remove because of val_metric_func
         cost = self.env.step_info[-1]['Total Commission Cost'] ## likely to remove because of val_metric_func
         
@@ -259,9 +258,11 @@ class DdqnAgent(BaseAgent, nn.Module):
                                             episode_num,
                                             training_episodes)
             trn_start_time = time.time()
-            tot_reward, mean_reward, std_reward, loss, trn_actions = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
+            tot_reward, mean_reward, std_reward, loss, trn_actions, n_steps, n_tgt_updates, n_q_updates = self._play_episode(epsilon, update_q_freq, update_tgt_freq, 'training')
             trn_finish_time = time.time()
             trn_time = trn_finish_time - trn_start_time
+            if self.save_path is not None and episode_num % 25 == 0:
+                self.export_Q_nn(f'{self.save_path}{self.name}_model_epi{episode_num}.pth')
             # Rewards based on Validation Set
             if self.validate:
                 val_tot_reward, val_avg_reward, val_std_reward, ror, cost, val_actions = self._validate(val_start_idx,val_end_idx)
@@ -274,6 +275,9 @@ class DdqnAgent(BaseAgent, nn.Module):
                             'Q_loss': loss,                      
                             "epsilon": epsilon,
                             'trn_actions': trn_actions,
+                            'trn steps': n_steps,
+                            'tgt_updates': n_tgt_updates,
+                            'q_updates': n_q_updates,
                             'val_tot_r': val_tot_reward,
                             'val_avg_r': val_avg_reward,
                             'val_std_r': val_std_reward,
@@ -288,7 +292,10 @@ class DdqnAgent(BaseAgent, nn.Module):
                             "std_r": std_reward,
                             'Q_loss': loss,
                             "epsilon": epsilon,
-                            'trn_actions': trn_actions}
+                            'trn_actions': trn_actions,
+                            'trn steps': n_steps,
+                            'tgt_updates': n_tgt_updates,
+                            'q_updates': n_q_updates}
             
             episodic_data.append(epi_data)
             
@@ -322,7 +329,7 @@ class DdqnAgent(BaseAgent, nn.Module):
                 # Print Update
                 print(
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
-                    f'-> Q_Loss = {loss_str} | Time = {trn_time:.3f} s | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
+                    f'-> Q_Loss = {loss_str} | Time = {trn_time:.3f}s, steps: {n_steps} | ∑R = {tot_reward:.2f}, μR = {mean_reward:.2f} ' +
                     f'σR = {std_reward:.2f} | {loss_type}: {stop_metric} = {current_val:.2f}' + stop_msg, end="", flush=False)
             
             
@@ -338,9 +345,11 @@ class DdqnAgent(BaseAgent, nn.Module):
                 # Print Update
                 print(
                     f'\r{self.get_name()}: EP {episode_num} of {training_episodes} Finished ' +
-                    f'-> ΔQ_Loss = {loss:.2f} | Time = {trn_time:.3f} s | ∑R = {tot_reward:.2f}, ' +
+                    f'-> ΔQ_Loss = {loss:.2f} | Time = {trn_time:.3f}s, steps: {n_steps} | ∑R = {tot_reward:.2f}, ' +
                     f'μR = {mean_reward:.2f} σR = {std_reward:.2f}', end="", flush=False)
-        
+
+            if episode_num % 50 == 0:
+                torch.save(self.Q1_nn.state_dict(), model_save_path + f'/Q1_nn_{episode_num}.pth')
         # Saving Episodic Data     
         self.training_episodic_data = episodic_data
         
@@ -353,7 +362,8 @@ class DdqnAgent(BaseAgent, nn.Module):
         else:
             txt_format = '\n'
         
-        
+  
+
         print(f'{txt_format}{self.get_name()}: Training finished on {self.env.get_name()}[{start_idx}:{end_idx}]\n')      
     
     def _play_episode(self,epsilon, update_q_freq,update_tgt_freq, step_type):
@@ -364,6 +374,8 @@ class DdqnAgent(BaseAgent, nn.Module):
         self.replay_memory.reset()
         is_done = False
         total_steps = 0
+        n_tgt_updates = 0
+        n_g_updates = 0
         loss = None
 
 
@@ -382,18 +394,19 @@ class DdqnAgent(BaseAgent, nn.Module):
                 tgt_nn_update_bool = total_steps % update_tgt_freq == 0                    
                 if tgt_nn_update_bool:
                     self.Q1_tgt_nn = self._create_tgt_nn(self.Q1_nn,self.device)
+                    n_tgt_updates += 1
 
                 # Training Q-Network 
                 q_nn_update_bool = total_steps % update_q_freq == 0                    
                 if self.replay_memory.is_full() and q_nn_update_bool:
                     loss = self._learn()
+                    n_g_updates += 1
                
 
             else:
                 raise ValueError(f'Invalid step_type: {step_type}')
                     
 
-            
             step_data = {f'{self.name} State': state, 
                         f'{self.name} Action': action, 
                         f'{self.name} Action Type': action_type,
@@ -403,12 +416,14 @@ class DdqnAgent(BaseAgent, nn.Module):
                         f'{self.name} Reward': reward}
             self.step_info.append(step_data)
             is_done = end
-            
+
             total_steps += 1
             rewards = np.append(rewards, reward)
             actions = np.append(actions, action)
-            
-        return np.sum(rewards), np.mean(rewards), np.std(rewards), loss, actions
+
+
+
+        return np.sum(rewards), np.mean(rewards), np.std(rewards), loss, actions, total_steps, n_tgt_updates, n_g_updates
     
    
     def _learn(self):
@@ -516,7 +531,7 @@ class DdqnAgent(BaseAgent, nn.Module):
     
     def export_Q_nn(self,filenamepath):
         torch.save(self.Q1_nn,filenamepath)
-        print(f'{self.get_name()}: Q-Network Exported to file "{filenamepath}"')
+        print(f'\r{self.get_name()}: Q-Network Exported to file "{filenamepath}"')
     
     def import_Q_nn(self,filenamepath):
         self.Q1_nn = torch.load(filenamepath)
@@ -583,6 +598,9 @@ class DdqnAgent(BaseAgent, nn.Module):
         
         with open(filenamepath, 'w') as f:
             json.dump(config, f)
+    
+    def set_save_location(self, save_path):
+        self.save_path = save_path
 
 Experience = namedtuple('Experience', field_names=['state',
                                                    'action',
@@ -620,7 +638,7 @@ class ExperienceBuffer:
     
     def is_full(self):
         return len(self.buffer) == self.buffer.maxlen
-    
+
 
 class Q_Network(nn.Module):
     def __init__(self,

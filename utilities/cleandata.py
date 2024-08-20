@@ -444,3 +444,235 @@ def flatten_state(state):
     flatten_state = stock_data_array.flatten().tolist()
     flatten_state.append(financial_data)
     return flatten_state
+
+
+def macro_x_stock_csv_input(file_name,file_path):
+    """
+    ---------------------------------------------------------------------------------------------
+    Converts YAHOO Finance stock csv files from to pd.dataframe[date, open, high, low, close, volume] 
+    with dtypes[Datetime,np.float32, np.float32, np.float32, np.float32, np.float32, np.int)
+    in ascentding order
+    ----------------------------------------------------------------------------------------------
+    Parameters:
+    -----------------------------------------------------------------------------------------------
+    file_name: string name of full file name
+    file_path: string name of full path to file
+    ----------------------------------------------------------------------------------------------
+    Returns:
+    ----------------------------------------------------------------------------------------------
+    pd.dataframe
+    """
+    # Import File
+    df_ohlcv = pd.read_csv(f'{file_path}/{file_name}')
+
+    # Updating Column names and order
+    column_names_mapping = {'date':'date',
+                            'close':'close',
+                            'volume':'volume',
+                            'open':'open',
+                            'high':'high',
+                            'adj close': 'adj close',
+                            'low':'low'}
+    # desired_order = ['date','open','high','low','close','volume',
+    # "1-Year Treasury Constant Maturity Rate_Log_delta",
+    # "5-Year Treasury Constant Maturity Rate_Log_delta",
+    # "Federal Funds Effective Rate_Log_delta",
+    # "ICE BofA US High Yield Index Effective Yield_Log_delta",
+    # "10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity_Log_delta",
+    # "10-Year Treasury Constant Maturity Minus Federal Funds Rate_Log_delta",
+    # "10-Year Treasury Constant Maturity Minus 3-Month Treasury Constant Maturity_Log_delta",
+    # "Crude Oil Prices: West Texas Intermediate (WTI)_Log_delta",
+    # "Crude Oil Prices: Brent - Europe_Log_delta",
+    # "VIX Volatility Index_Log_delta",
+    # "Wilshire 5000 Total Market Index_Log_delta",
+    # "Moody's Seasoned Baa Corporate Bond Yield_Log_delta",
+    # "30-Year Fixed Rate Mortgage Average_Log_delta",
+    # "XAU_Close_YF_Log_delta"]
+
+    desired_order = ['date',
+    "1-Month Treasury Constant Maturity Rate_Log_delta",
+    "3-Month Treasury Bill: Secondary Market Rate_Log_delta",
+    "1-Year Treasury Constant Maturity Rate_Log_delta",
+    "close",
+    "2-Year Treasury Constant Maturity Rate_Log_delta",
+    "5-Year Treasury Constant Maturity Rate_Log_delta",
+    "10-Year Treasury Constant Maturity Rate_Log_delta",
+    "Federal Funds Effective Rate_Log_delta",
+    "Commercial Paper Interest Rate_Log_delta",
+    "ICE BofA US High Yield Index Effective Yield_Log_delta",
+    "ICE BofA US High Yield Index Option-Adjusted Spread (OAS)_Log_delta",
+    "10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity_Log_delta",
+    "10-Year Treasury Constant Maturity Minus Federal Funds Rate_Log_delta",
+    "10-Year Treasury Constant Maturity Minus 3-Month Treasury Constant Maturity_Log_delta",
+    "U.S. Dollars to Euro Spot Exchange Rate_Log_delta",
+    "Crude Oil Prices: West Texas Intermediate (WTI)_Log_delta",
+    "Crude Oil Prices: Brent - Europe_Log_delta",
+    "CBOE NASDAQ 100 Volatility Index_Log_delta",
+    "CBOE DJIA Volatility Index_Log_delta",
+    "VIX Volatility Index_Log_delta",
+    "Nasdaq Composite Index_Log_delta",
+    "NASDAQ 100 Index_Log_delta",
+    "Wilshire 5000 Total Market Index_Log_delta",
+    "Moody's Seasoned Aaa Corporate Bond Yield_Log_delta",
+    "Moody's Seasoned Baa Corporate Bond Yield_Log_delta",
+    "Nominal Broad U.S. Dollar Index_Log_delta",
+    "Wilshire 5000 to GDP Ratio_Log_delta",
+    "SPGSCI_Log_delta",
+    "open_Log_delta",
+    "high_Log_delta",
+    "low_Log_delta",
+    "close_Log_delta",
+    "adj close_Log_delta",
+    "volume_Log_delta",
+    "Consumer Price Index (CPI)_Log_delta",
+    "Retail Sales_Log_delta",
+    "Industrial Production_Log_delta",
+    "Nonfarm Payrolls_Log_delta",
+    "Personal Income_Log_delta",
+    "Personal Consumption Expenditures (PCE)_Log_delta",
+    "Business Inventories_Log_delta",
+    "Consumer Credit_Log_delta",
+    "Construction Spending_Log_delta",
+    "Money Supply (M2)_Log_delta",
+    "Consumer Price Index: All Items: Total for United States_Log_delta",
+    "Equity Market Volatility Tracker: Macroeconomic News and Outlook: Other Financial Indicators_Log_delta",
+    "Equity Market Volatility Tracker: Exchange Rates_Log_delta",
+    "Equity Market Volatility Tracker: Housing And Land Management_Log_delta",
+    "Equity Market Volatility Tracker: Competition Matters_Log_delta",
+    "Equity Market Volatility Tracker: Government Sponsored Enterprises_Log_delta",
+    "Equity Market Volatility Tracker: Taxes_Log_delta",
+    "Equity Market Volatility Tracker: Competition Policy_Log_delta",
+    "Equity Market Volatility Tracker: Labor Disputes_Log_delta",
+    "Equity Market Volatility Tracker: Intellectual Property Matters_Log_delta",
+    "Monetary Base; Total_Log_delta",
+    "Monetary Base; Currency in Circulation_Log_delta",
+    "Swiss Monetary Base Aggregate_Log_delta",
+    "Currency in Circulation_Log_delta",
+    "All Employees, Private Service-Providing_Log_delta",
+    "Continued Claims (Insured Unemployment)_Log_delta",
+    "Real personal consumption expenditures (chain-type quantity index)_Log_delta",
+    "Market Value of Marketable Treasury Debt_Log_delta",
+    "Coincident Economic Activity Index for the United States_Log_delta",
+    "Total Construction Spending: Total Construction in the United States_Log_delta",
+    "Industrial Production: Manufacturing: Durable Goods: Semiconductor and Other Electronic Component (NAICS = 3344)_Log_delta",
+    "Manufacturers Inventories_Log_delta",
+    "Manufacturers Sales_Log_delta",
+    "Advance Retail Sales: Retail Trade_Log_delta",
+    "Advance Real Retail and Food Services Sales_Log_delta",
+    "Advance Retail Sales: Retail Trade and Food Services_Log_delta",
+    "Retail Sales: Retail Trade_Log_delta",
+    "Retailers Inventories_Log_delta",
+    "Real Manufacturing and Trade Industries Sales_Log_delta",
+    "Merchant Wholesalers Inventories_Log_delta",
+    "S&P CoreLogic Case-Shiller U.S. National Home Price Index_Log_delta",
+    "Producer Price Index by Industry: Total Manufacturing Industries_Log_delta",
+    "GDP_Log_delta",
+    "Real Gross Domestic Product_Log_delta",
+    "Real gross domestic product per capita_Log_delta",
+    "Real Potential Gross Domestic Product_Log_delta",
+    "Federal government current expenditures: Interest payments_Log_delta",
+    "Federal government current tax receipts_Log_delta",
+    "Federal Government: Current Expenditures_Log_delta",
+    "Corporate Profits After Tax (without IVA and CCAdj)_Log_delta",
+    "Federal Debt: Total Public Debt_Log_delta"]
+
+    df_ohlcv = df_ohlcv.rename(columns=column_names_mapping)[desired_order]
+
+    # List of columns to round
+    columns_to_round = [
+    "1-Month Treasury Constant Maturity Rate_Log_delta",
+    "3-Month Treasury Bill: Secondary Market Rate_Log_delta",
+    "1-Year Treasury Constant Maturity Rate_Log_delta",
+    "close",
+    "2-Year Treasury Constant Maturity Rate_Log_delta",
+    "5-Year Treasury Constant Maturity Rate_Log_delta",
+    "10-Year Treasury Constant Maturity Rate_Log_delta",
+    "Federal Funds Effective Rate_Log_delta",
+    "Commercial Paper Interest Rate_Log_delta",
+    "ICE BofA US High Yield Index Effective Yield_Log_delta",
+    "ICE BofA US High Yield Index Option-Adjusted Spread (OAS)_Log_delta",
+    "10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity_Log_delta",
+    "10-Year Treasury Constant Maturity Minus Federal Funds Rate_Log_delta",
+    "10-Year Treasury Constant Maturity Minus 3-Month Treasury Constant Maturity_Log_delta",
+    "U.S. Dollars to Euro Spot Exchange Rate_Log_delta",
+    "Crude Oil Prices: West Texas Intermediate (WTI)_Log_delta",
+    "Crude Oil Prices: Brent - Europe_Log_delta",
+    "CBOE NASDAQ 100 Volatility Index_Log_delta",
+    "CBOE DJIA Volatility Index_Log_delta",
+    "VIX Volatility Index_Log_delta",
+    "Nasdaq Composite Index_Log_delta",
+    "NASDAQ 100 Index_Log_delta",
+    "Wilshire 5000 Total Market Index_Log_delta",
+    "Moody's Seasoned Aaa Corporate Bond Yield_Log_delta",
+    "Moody's Seasoned Baa Corporate Bond Yield_Log_delta",
+    "Nominal Broad U.S. Dollar Index_Log_delta",
+    "Wilshire 5000 to GDP Ratio_Log_delta",
+    "SPGSCI_Log_delta",
+    "open_Log_delta",
+    "high_Log_delta",
+    "low_Log_delta",
+    "close_Log_delta",
+    "adj close_Log_delta",
+    "volume_Log_delta",
+    "Consumer Price Index (CPI)_Log_delta",
+    "Retail Sales_Log_delta",
+    "Industrial Production_Log_delta",
+    "Nonfarm Payrolls_Log_delta",
+    "Personal Income_Log_delta",
+    "Personal Consumption Expenditures (PCE)_Log_delta",
+    "Business Inventories_Log_delta",
+    "Consumer Credit_Log_delta",
+    "Construction Spending_Log_delta",
+    "Money Supply (M2)_Log_delta",
+    "Consumer Price Index: All Items: Total for United States_Log_delta",
+    "Equity Market Volatility Tracker: Macroeconomic News and Outlook: Other Financial Indicators_Log_delta",
+    "Equity Market Volatility Tracker: Exchange Rates_Log_delta",
+    "Equity Market Volatility Tracker: Housing And Land Management_Log_delta",
+    "Equity Market Volatility Tracker: Competition Matters_Log_delta",
+    "Equity Market Volatility Tracker: Government Sponsored Enterprises_Log_delta",
+    "Equity Market Volatility Tracker: Taxes_Log_delta",
+    "Equity Market Volatility Tracker: Competition Policy_Log_delta",
+    "Equity Market Volatility Tracker: Labor Disputes_Log_delta",
+    "Equity Market Volatility Tracker: Intellectual Property Matters_Log_delta",
+    "Monetary Base; Total_Log_delta",
+    "Monetary Base; Currency in Circulation_Log_delta",
+    "Swiss Monetary Base Aggregate_Log_delta",
+    "Currency in Circulation_Log_delta",
+    "All Employees, Private Service-Providing_Log_delta",
+    "Continued Claims (Insured Unemployment)_Log_delta",
+    "Real personal consumption expenditures (chain-type quantity index)_Log_delta",
+    "Market Value of Marketable Treasury Debt_Log_delta",
+    "Coincident Economic Activity Index for the United States_Log_delta",
+    "Total Construction Spending: Total Construction in the United States_Log_delta",
+    "Industrial Production: Manufacturing: Durable Goods: Semiconductor and Other Electronic Component (NAICS = 3344)_Log_delta",
+    "Manufacturers Inventories_Log_delta",
+    "Manufacturers Sales_Log_delta",
+    "Advance Retail Sales: Retail Trade_Log_delta",
+    "Advance Real Retail and Food Services Sales_Log_delta",
+    "Advance Retail Sales: Retail Trade and Food Services_Log_delta",
+    "Retail Sales: Retail Trade_Log_delta",
+    "Retailers Inventories_Log_delta",
+    "Real Manufacturing and Trade Industries Sales_Log_delta",
+    "Merchant Wholesalers Inventories_Log_delta",
+    "S&P CoreLogic Case-Shiller U.S. National Home Price Index_Log_delta",
+    "Producer Price Index by Industry: Total Manufacturing Industries_Log_delta",
+    "GDP_Log_delta",
+    "Real Gross Domestic Product_Log_delta",
+    "Real gross domestic product per capita_Log_delta",
+    "Real Potential Gross Domestic Product_Log_delta",
+    "Federal government current expenditures: Interest payments_Log_delta",
+    "Federal government current tax receipts_Log_delta",
+    "Federal Government: Current Expenditures_Log_delta",
+    "Corporate Profits After Tax (without IVA and CCAdj)_Log_delta",
+    "Federal Debt: Total Public Debt_Log_delta"
+]
+
+
+    # Round selected columns to 10 digits
+    df_ohlcv[columns_to_round] = df_ohlcv[columns_to_round].round(10) # Todo do we really need to round?
+    
+    
+    # Converting to Date String to datetime datatype
+    # df_ohlcv['date'] = pd.to_datetime(df_ohlcv['date'], format= '%m/%d/%Y')
+    df_ohlcv['date'] = pd.to_datetime(df_ohlcv['date'], format='%m/%d/%Y')
+    return df_ohlcv
